@@ -1,0 +1,6 @@
+{
+  "name": "D0 住宿搜尋",
+  "description": "依登山口、車程、價格與評分等條件搜尋登山前一晚住宿，協助登山者規劃 D0 住宿。住宿資訊以最新公開資料為準。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
