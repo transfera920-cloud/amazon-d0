@@ -24,9 +24,9 @@ export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lo
 
 // 備援計算：山區離線估算車程（僅在無 Google API 金鑰或 API 斷線備援時使用）
 export function estimateOfflineDriveMinutes(distanceKm: number): number {
-  const mountainRoadDistance = distanceKm * 1.35;
-  const minutes = Math.round((mountainRoadDistance / 35) * 60);
-  return Math.max(10, minutes);
+  const mountainRoadDistance = distanceKm * 1.6;
+  const minutes = Math.round((mountainRoadDistance / 25) * 60);
+  return Math.max(15, minutes);
 }
 
 // 離線備援資料庫：僅在 Google API 完全連不上或未設定金鑰時作為最後備援
@@ -261,8 +261,8 @@ async function computeRealDriveRoutes(
   }
 
   if (!response.ok) {
-    // 若 Routes API 暫時無法計算，回退預設無路程估計
-    return destinations.map(() => ({ driveMinutes: 999, distanceKm: 0 }));
+    // 若 Routes API 暫時無法計算，回退無有效路程
+    return destinations.map(() => ({ driveMinutes: Infinity, distanceKm: 0 }));
   }
 
   const elements = await response.json();
@@ -278,12 +278,12 @@ async function computeRealDriveRoutes(
         const distanceKm = Math.round(((item.distanceMeters || 0) / 1000) * 10) / 10;
         resultMap[idx] = { driveMinutes, distanceKm };
       } else {
-        resultMap[idx] = { driveMinutes: 999, distanceKm: 0 };
+        resultMap[idx] = { driveMinutes: Infinity, distanceKm: 0 };
       }
     });
   }
 
-  return destinations.map((_, i) => resultMap[i] || { driveMinutes: 999, distanceKm: 0 });
+  return destinations.map((_, i) => resultMap[i] || { driveMinutes: Infinity, distanceKm: 0 });
 }
 
 /**
@@ -316,7 +316,7 @@ export async function getNearbyAccommodations(
       lodgings: offlineLodgings,
       dataSource: 'offline_fallback',
       errorType: 'NO_API_KEY',
-      errorMessage: '未設定 VITE_GOOGLE_MAPS_API_KEY 金鑰，目前顯示離線備援資料，非即時 Google 資料。',
+      errorMessage: '未設定 VITE_GOOGLE_MAPS_API_KEY 金鑰，目前顯示離線備援資料，非即時 Google 資料。車程為粗估，山區實際車程可能更長，請以 Google 地圖實際路線為準。',
     };
   }
 
@@ -352,7 +352,7 @@ export async function getNearbyAccommodations(
     const googleLodgings: LodgingPlace[] = rawPlaces.map((p, idx) => {
       const typeInfo = parseTypeCategory(p.types);
       const priceInfo = formatPriceText(p.priceLevel);
-      const route = routeResults[idx] || { driveMinutes: 999, distanceKm: 0 };
+      const route = routeResults[idx] || { driveMinutes: Infinity, distanceKm: 0 };
 
       return {
         id: p.id || `google-${idx}`,
@@ -375,8 +375,12 @@ export async function getNearbyAccommodations(
 
     // 步驟 4：依使用者選擇的條件過濾
     const filtered = googleLodgings.filter((item) => {
-      // 車程條件過濾（如果路線無法到達排除或不限車程）
-      if (maxDriveMinutes < 999 && item.driveMinutes > maxDriveMinutes) {
+      // 只要 driveMinutes 不是有限數字（!Number.isFinite），不論使用者是否選擇「不限車程」，一律排除
+      if (!Number.isFinite(item.driveMinutes)) {
+        return false;
+      }
+      // 車程條件過濾（如果限制了最大車程時間）
+      if (Number.isFinite(maxDriveMinutes) && item.driveMinutes > maxDriveMinutes) {
         return false;
       }
       // 最低評分條件過濾
@@ -427,7 +431,7 @@ export async function getNearbyAccommodations(
       dataSource: 'offline_fallback',
       errorType,
       errorMessage:
-        err.message || '無法連線至 Google Maps API，目前顯示離線備援資料，非即時 Google 資料。',
+        err.message || '無法連線至 Google Maps API，目前顯示離線備援資料，非即時 Google 資料。車程為粗估，山區實際車程可能更長，請以 Google 地圖實際路線為準。',
     };
   }
 }
@@ -454,7 +458,8 @@ function getOfflineFallbackLodgings(
     };
   })
     .filter((item) => {
-      const driveMatch = maxDriveMinutes >= 999 || item.driveMinutes <= maxDriveMinutes;
+      if (!Number.isFinite(item.driveMinutes)) return false;
+      const driveMatch = !Number.isFinite(maxDriveMinutes) || item.driveMinutes <= maxDriveMinutes;
       const typeMatch = typeFilter === 'all' || item.typeCategory === typeFilter;
       const priceMatch = matchesPrice(item.price, priceRange);
       const ratingMatch = minRating === 'any' || item.rating >= parseFloat(minRating);

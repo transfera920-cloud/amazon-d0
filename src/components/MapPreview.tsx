@@ -196,8 +196,8 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
       });
 
       const driveTimeDisplay =
-        lodging.driveMinutes === 999
-          ? '車程計算中'
+        !Number.isFinite(lodging.driveMinutes) || lodging.driveMinutes === 999
+          ? '車程資料異常，請自行查詢'
           : `車程約 ${lodging.driveMinutes} 分鐘${
               lodging.driveDistanceKm ? ` (${lodging.driveDistanceKm} km)` : ''
             }`;

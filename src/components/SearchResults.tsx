@@ -34,7 +34,7 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
         ? 90
         : criteria.driveTime === '120m'
         ? 120
-        : 999;
+        : Infinity;
 
     // 1. 地理編碼：查詢登山口座標
     getTrailheadLocation(currentTrailheadName)
@@ -126,6 +126,9 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
                 <div className="font-bold">目前顯示離線備援資料，非即時 Google 資料</div>
                 <div className="text-amber-800 text-xs mt-0.5">
                   {searchResult.errorMessage || '未設定 Google Maps API 金鑰或 API 連線異常'}
+                </div>
+                <div className="text-amber-700 text-xs font-medium mt-1">
+                  ※ 車程為粗估，山區實際車程可能更長，請以 Google 地圖實際路線為準
                 </div>
               </div>
             </div>
