@@ -62,15 +62,23 @@ export async function getTrailheadLocation(query: string): Promise<TrailheadLoca
     clean
   )}&key=${apiKey}&language=zh-TW`;
 
+  const isDev =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
   let response: Response;
   try {
     response = await fetch(directUrl);
   } catch (directErr) {
-    // 瀏覽器端若遇 CORS 限制，平滑改走開發代理
-    try {
-      response = await fetch(proxyUrl);
-    } catch {
-      throw new Error('無法連線至 Google Maps Geocoding API，請檢查網路連線或金鑰設定。');
+    // 僅在有本機 Vite Proxy 支援的開發環境下嘗試代理
+    if (isDev) {
+      try {
+        response = await fetch(proxyUrl);
+      } catch {
+        throw new Error('無法連線至 Google Maps Geocoding API，請檢查網路連線或金鑰設定。');
+      }
+    } else {
+      throw new Error('無法連線至 Google Maps Geocoding API，請檢查網路連線或瀏覽器阻擋設定。');
     }
   }
 

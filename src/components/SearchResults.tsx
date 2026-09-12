@@ -4,6 +4,7 @@ import { SearchCriteria, TrailheadLocation } from '../types';
 import { getTrailheadLocation } from '../data/trailheads';
 import { getNearbyAccommodations, AccommodationsSearchResult } from '../data/lodgings';
 import { MapPreview } from './MapPreview';
+import { LodgingCardsList } from './LodgingCardsList';
 import { useSiteConfig } from '../context/SiteConfigContext';
 
 interface SearchResultsProps {
@@ -19,6 +20,7 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
   const [geocodingError, setGeocodingError] = useState<string | null>(null);
   const [searchResult, setSearchResult] = useState<AccommodationsSearchResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selectedLodgingId, setSelectedLodgingId] = useState<string | null>(null);
   const [keyUpdateTick, setKeyUpdateTick] = useState<number>(0);
 
   // 監聽金鑰變更，即時重新查詢
@@ -197,6 +199,18 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
           lodgings={searchResult?.lodgings || []}
           isLoadingLodgings={isLoading}
           dataSource={searchResult?.dataSource || 'google'}
+          selectedLodgingId={selectedLodgingId}
+          onSelectLodging={setSelectedLodgingId}
+        />
+      )}
+
+      {/* 搜尋結果詳細資訊方塊（顯示於地圖下方） */}
+      {location && searchResult && (
+        <LodgingCardsList
+          lodgings={searchResult.lodgings}
+          selectedLodgingId={selectedLodgingId}
+          onSelectLodging={setSelectedLodgingId}
+          trailheadName={location.name}
         />
       )}
     </section>

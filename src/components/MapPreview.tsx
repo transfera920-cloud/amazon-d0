@@ -11,6 +11,8 @@ interface MapPreviewProps {
   lodgings: LodgingPlace[];
   isLoadingLodgings?: boolean;
   dataSource?: SearchDataSource;
+  selectedLodgingId?: string | null;
+  onSelectLodging?: (id: string) => void;
 }
 
 export const MapPreview: React.FC<MapPreviewProps> = ({
@@ -21,11 +23,14 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
   lodgings,
   isLoadingLodgings = false,
   dataSource = 'google',
+  selectedLodgingId,
+  onSelectLodging,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const trailheadMarkerRef = useRef<L.Marker | null>(null);
   const lodgingMarkersLayerRef = useRef<L.LayerGroup | null>(null);
+  const markersByIdRef = useRef<Map<string, L.Marker>>(new Map());
   const circleRef = useRef<L.Circle | null>(null);
 
   // 根據車程估計地圖上的參考半徑（公尺）
@@ -150,6 +155,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
     if (!map || !lodgingLayer) return;
 
     lodgingLayer.clearLayers();
+    markersByIdRef.current.clear();
 
     const boundsPoints: L.LatLngExpression[] = [[latitude, longitude]];
 
@@ -194,6 +200,12 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
       const marker = L.marker([lodging.latitude, lodging.longitude], {
         icon: lodgingIcon,
       });
+
+      marker.on('click', () => {
+        onSelectLodging?.(lodging.id);
+      });
+
+      markersByIdRef.current.set(lodging.id, marker);
 
       const driveTimeDisplay =
         !Number.isFinite(lodging.driveMinutes) || lodging.driveMinutes === 999
@@ -256,7 +268,18 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
     } else {
       map.setView([latitude, longitude], 11);
     }
-  }, [lodgings, latitude, longitude]);
+  }, [lodgings, latitude, longitude, onSelectLodging]);
+
+  // 當外部指定 selectedLodgingId 時，地圖平移並打開該標記彈窗
+  useEffect(() => {
+    if (!selectedLodgingId) return;
+    const marker = markersByIdRef.current.get(selectedLodgingId);
+    const map = mapInstanceRef.current;
+    if (marker && map) {
+      map.panTo(marker.getLatLng(), { animate: true });
+      marker.openPopup();
+    }
+  }, [selectedLodgingId]);
 
   // 元件卸載時清理地圖
   useEffect(() => {

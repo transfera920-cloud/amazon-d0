@@ -7,7 +7,9 @@ export function getGoogleMapsApiKey(): string {
       return saved.trim();
     }
   }
-  return (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+  const metaEnv = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY : '';
+  const nodeEnv = typeof process !== 'undefined' && process.env ? process.env.VITE_GOOGLE_MAPS_API_KEY : '';
+  return (metaEnv || nodeEnv || '').trim();
 }
 
 export function setGoogleMapsApiKey(key: string): void {

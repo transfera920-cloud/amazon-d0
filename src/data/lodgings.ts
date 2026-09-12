@@ -136,7 +136,7 @@ function formatPriceText(priceLevel?: string): { text: string; price: number } {
 /**
  * 呼叫 Google Places API (New) Nearby Search
  */
-async function searchGoogleNearbyPlaces(
+export async function searchGoogleNearbyPlaces(
   lat: number,
   lng: number,
   radiusMeters: number,
@@ -168,6 +168,10 @@ async function searchGoogleNearbyPlaces(
       'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.types,places.googleMapsUri',
   };
 
+  const isDev =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
   let response: Response;
   try {
     response = await fetch(directUrl, {
@@ -175,13 +179,20 @@ async function searchGoogleNearbyPlaces(
       headers,
       body: JSON.stringify(requestBody),
     });
-  } catch {
-    // 透過本機代理重試
-    response = await fetch(proxyUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-    });
+  } catch (directErr) {
+    // 僅在有本機 Vite Proxy 支援的開發伺服器下嘗試代理重試
+    if (isDev) {
+      response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+    } else {
+      throw {
+        code: 'NETWORK_ERROR',
+        message: '無法連線至 Google Places API 伺服器，請檢查網路連線或瀏覽器阻擋設定。',
+      };
+    }
   }
 
   if (response.status === 403) {
@@ -197,7 +208,7 @@ async function searchGoogleNearbyPlaces(
     const suffix = googleDetail ? `\nGoogle 回傳原因：${googleDetail}` : '';
     throw {
       code: 'AUTH_403',
-      message: `Google Places API 授權失敗（403）：請確認金鑰已啟用「Places API (New)」，並檢查權限限制。${suffix}`,
+      message: `Google Places API 授權失敗（403）：請確認金鑰已啟用「Places API (New)」，並檢查權限與參照網址限制。${suffix}`,
     };
   }
   if (response.status === 429) {
@@ -221,7 +232,7 @@ async function searchGoogleNearbyPlaces(
 /**
  * 呼叫 Google Routes API computeRouteMatrix 取得真實駕車距離與時間
  */
-async function computeRealDriveRoutes(
+export async function computeRealDriveRoutes(
   originLat: number,
   originLng: number,
   destinations: { lat: number; lng: number }[],
@@ -265,6 +276,10 @@ async function computeRealDriveRoutes(
     'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,distanceMeters,duration',
   };
 
+  const isDev =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
   let response: Response;
   try {
     response = await fetch(directUrl, {
@@ -272,36 +287,113 @@ async function computeRealDriveRoutes(
       headers,
       body: JSON.stringify(requestBody),
     });
-  } catch {
-    response = await fetch(proxyUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-    });
+  } catch (directErr) {
+    // 僅在有本機 Vite Proxy 支援的開發伺服器下嘗試代理重試
+    if (isDev) {
+      response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+    } else {
+      throw {
+        code: 'NETWORK_ERROR',
+        message: '無法連線至 Google Routes API 伺服器，請檢查網路連線或瀏覽器阻擋設定。',
+      };
+    }
+  }
+
+  if (response.status === 403) {
+    let googleDetail = '';
+    try {
+      const errJson = await response.json();
+      if (Array.isArray(errJson) && errJson[0]?.error?.message) {
+        googleDetail = errJson[0].error.message;
+      } else if (errJson?.error?.message) {
+        googleDetail = errJson.error.message;
+      } else {
+        googleDetail = typeof errJson === 'object' ? JSON.stringify(errJson) : String(errJson);
+      }
+    } catch {
+      try {
+        googleDetail = await response.text();
+      } catch {}
+    }
+    const suffix = googleDetail ? `\nGoogle 回傳原因：${googleDetail}` : '';
+    throw {
+      code: 'AUTH_403',
+      message: `Google Routes API 授權失敗（403）：請確認金鑰已啟用「Routes API」，並檢查權限限制與 HTTP 參照網址設定。${suffix}`,
+    };
+  }
+
+  if (response.status === 429) {
+    throw {
+      code: 'QUOTA_429',
+      message: 'Google Routes API 額度用盡或頻率過高（429）：請稍後再試。',
+    };
   }
 
   if (!response.ok) {
-    // 若 Routes API 暫時無法計算，回退無有效路程
-    return destinations.map(() => ({ driveMinutes: Infinity, distanceKm: 0 }));
+    let errText = '';
+    try {
+      const errJson = await response.json();
+      if (Array.isArray(errJson) && errJson[0]?.error?.message) {
+        errText = errJson[0].error.message;
+      } else if (errJson?.error?.message) {
+        errText = errJson.error.message;
+      } else {
+        errText = typeof errJson === 'object' ? JSON.stringify(errJson) : String(errJson);
+      }
+    } catch {
+      errText = await response.text().catch(() => '');
+    }
+    throw {
+      code: 'API_ERROR',
+      message: `Google Routes API 錯誤（HTTP ${response.status}）：${errText}`,
+    };
   }
 
   const elements = await response.json();
+
+  // 若 Google Routes API 回傳結構包含錯誤
+  if (!Array.isArray(elements)) {
+    if (elements && (elements as any).error) {
+      const errMsg = (elements as any).error.message || JSON.stringify((elements as any).error);
+      throw {
+        code: 'API_ERROR',
+        message: `Google Routes API 錯誤：${errMsg}`,
+      };
+    }
+    throw {
+      code: 'API_ERROR',
+      message: 'Google Routes API 回傳格式非預期陣列格式。',
+    };
+  }
+
+  // 檢查陣列首筆是否為錯誤物件
+  if (elements.length > 0 && (elements[0] as any)?.error) {
+    const errObj = (elements[0] as any).error;
+    const errCode = errObj.code === 403 ? 'AUTH_403' : errObj.code === 429 ? 'QUOTA_429' : 'API_ERROR';
+    throw {
+      code: errCode,
+      message: `Google Routes API 錯誤（${errObj.status || errObj.code}）：${errObj.message || JSON.stringify(errObj)}`,
+    };
+  }
+
   // elements 是一組陣列：每個物件有 destinationIndex, duration ('1230s'), distanceMeters
   const resultMap: Record<number, { driveMinutes: number; distanceKm: number }> = {};
 
-  if (Array.isArray(elements)) {
-    elements.forEach((item: any) => {
-      const idx = item.destinationIndex ?? 0;
-      if (item.condition === 'ROUTE_EXISTS' && item.duration) {
-        const seconds = parseInt(item.duration.replace('s', ''), 10) || 0;
-        const driveMinutes = Math.max(1, Math.round(seconds / 60));
-        const distanceKm = Math.round(((item.distanceMeters || 0) / 1000) * 10) / 10;
-        resultMap[idx] = { driveMinutes, distanceKm };
-      } else {
-        resultMap[idx] = { driveMinutes: Infinity, distanceKm: 0 };
-      }
-    });
-  }
+  elements.forEach((item: any) => {
+    const idx = item.destinationIndex ?? 0;
+    if (item.condition === 'ROUTE_EXISTS' && item.duration) {
+      const seconds = parseInt(item.duration.replace('s', ''), 10) || 0;
+      const driveMinutes = Math.max(1, Math.round(seconds / 60));
+      const distanceKm = Math.round(((item.distanceMeters || 0) / 1000) * 10) / 10;
+      resultMap[idx] = { driveMinutes, distanceKm };
+    } else {
+      resultMap[idx] = { driveMinutes: Infinity, distanceKm: 0 };
+    }
+  });
 
   return destinations.map((_, i) => resultMap[i] || { driveMinutes: Infinity, distanceKm: 0 });
 }
