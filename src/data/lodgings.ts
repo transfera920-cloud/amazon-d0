@@ -89,7 +89,8 @@ function getIncludedPlaceTypes(typeCategory: string): string[] {
       return ['campground'];
     case 'all':
     default:
-      return ['hotel', 'guest_house', 'bed_and_breakfast', 'hostel', 'campground'];
+      // 「不限類型」時加入 'lodging' 作為保底，涵蓋山區僅標記為大分類的溫泉會館與小型民宿
+      return ['hotel', 'guest_house', 'bed_and_breakfast', 'hostel', 'campground', 'lodging'];
   }
 }
 
