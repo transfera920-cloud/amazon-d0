@@ -1,4 +1,5 @@
 import { TrailheadLocation } from '../types';
+import { getGoogleMapsApiKey } from '../utils/apiKey';
 
 export const COMMON_TRAILHEAD_COORDINATES: Record<string, TrailheadLocation> = {
   屯原登山口: { name: '屯原登山口', latitude: 24.0381, longitude: 121.2372 },
@@ -46,11 +47,11 @@ export async function getTrailheadLocation(query: string): Promise<TrailheadLoca
   }
 
   // 2. 使用者自訂非清單登山口：呼叫 Google Geocoding API
-  const apiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+  const apiKey = getGoogleMapsApiKey();
 
   if (!apiKey) {
     throw new Error(
-      `未設定 VITE_GOOGLE_MAPS_API_KEY 金鑰，且「${clean}」不在常用清單中。請改用清單登山口（如屯原、塔塔加、雪山、向陽等）或設定 Google Maps API 金鑰。`
+      `尚未設定 Google Maps API 金鑰，且「${clean}」不在常用清單中。請點選右上角「金鑰設定」輸入金鑰，或使用常見百岳登山口。`
     );
   }
 

@@ -3,9 +3,11 @@ import { Header } from './components/Header';
 import { SearchForm } from './components/SearchForm';
 import { SearchResults } from './components/SearchResults';
 import { Footer } from './components/Footer';
+import { AdminPanel } from './components/AdminPanel';
+import { SiteConfigProvider } from './context/SiteConfigContext';
 import { SearchCriteria } from './types';
 
-export default function App() {
+function MainApp() {
   const [criteria, setCriteria] = useState<SearchCriteria>({
     trailhead: '屯原登山口',
     driveTime: '30m',
@@ -49,6 +51,18 @@ export default function App() {
       </main>
 
       <Footer />
+
+      {/* 系統後台管理介面（編輯所有前台文字與 API 金鑰） */}
+      <AdminPanel />
     </div>
   );
 }
+
+export default function App() {
+  return (
+    <SiteConfigProvider>
+      <MainApp />
+    </SiteConfigProvider>
+  );
+}
+

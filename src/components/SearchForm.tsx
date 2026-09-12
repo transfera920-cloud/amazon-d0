@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, MapPin, Clock, DollarSign, Star, Home, Navigation } from 'lucide-react';
 import { SearchCriteria } from '../types';
+import { useSiteConfig } from '../context/SiteConfigContext';
 
 interface SearchFormProps {
   criteria: SearchCriteria;
@@ -15,6 +16,8 @@ export const SearchForm: React.FC<SearchFormProps> = ({
   onSearch,
   isSearching,
 }) => {
+  const { siteText } = useSiteConfig();
+
   const handleChange = (field: keyof SearchCriteria, value: string) => {
     onCriteriaChange({
       ...criteria,
@@ -29,12 +32,17 @@ export const SearchForm: React.FC<SearchFormProps> = ({
     });
   };
 
+  const quickFillList = (siteText.quickFillOptions || '')
+    .split(/[,，、]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   return (
     <section id="search-criteria-section" className="bg-white rounded-2xl border border-stone-200 shadow-xs p-5 sm:p-7">
       <div className="border-b border-stone-100 pb-4 mb-6">
         <h2 id="search-criteria-h2" className="text-xl sm:text-2xl font-bold text-stone-900 flex items-center justify-center gap-2.5 text-center">
           <Navigation className="w-5 h-5 text-emerald-700" />
-          <span>搜尋條件設定</span>
+          <span>{siteText.searchSectionTitle}</span>
         </h2>
       </div>
 
@@ -43,7 +51,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
         <div className="space-y-2">
           <label htmlFor="input-trailhead" className="block text-sm font-semibold text-stone-800 flex items-center gap-1.5">
             <MapPin className="w-4 h-4 text-emerald-700" />
-            <span>1. 登山口</span>
+            <span>{siteText.trailheadLabel}</span>
             <span className="text-red-500">*</span>
           </label>
           <div className="relative">
@@ -52,33 +60,35 @@ export const SearchForm: React.FC<SearchFormProps> = ({
               type="text"
               value={criteria.trailhead}
               onChange={(e) => handleChange('trailhead', e.target.value)}
-              placeholder="請手動輸入登山口名稱（例如：屯原登山口、塔塔加登山口、雪山登山口）"
+              placeholder={siteText.trailheadPlaceholder}
               className="w-full px-4 py-3 rounded-lg border border-stone-300 bg-white text-stone-900 text-sm sm:text-base focus:outline-hidden focus:ring-2 focus:ring-emerald-600 focus:border-transparent transition-all placeholder:text-stone-400"
               required
             />
           </div>
           {/* 快速填寫建議 */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs text-stone-500">
-            <span className="font-medium text-stone-400">快速填入：</span>
-            {['屯原登山口', '塔塔加登山口', '雪山登山口', '向陽登山口'].map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => handleQuickFill(item)}
-                className="px-2.5 py-1 rounded-md bg-stone-100 hover:bg-emerald-50 hover:text-emerald-800 text-stone-600 transition-colors border border-stone-200/80 cursor-pointer"
-              >
-                {item}
-              </button>
-            ))}
-          </div>
+          {quickFillList.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs text-stone-500">
+              <span className="font-medium text-stone-400">快速填入：</span>
+              {quickFillList.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => handleQuickFill(item)}
+                  className="px-2.5 py-1 rounded-md bg-stone-100 hover:bg-emerald-50 hover:text-emerald-800 text-stone-600 transition-colors border border-stone-200/80 cursor-pointer"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 pt-1">
-          {/* 2. 車程（僅顯示車程） */}
+          {/* 2. 車程 */}
           <div className="space-y-1.5">
             <label htmlFor="select-drive-time" className="block text-sm font-semibold text-stone-800 flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-emerald-700" />
-              <span>2. 車程</span>
+              <span>{siteText.driveTimeLabel}</span>
             </label>
             <select
               id="select-drive-time"
@@ -94,11 +104,11 @@ export const SearchForm: React.FC<SearchFormProps> = ({
             </select>
           </div>
 
-          {/* 3. 價格等級（僅顯示價格，以500元為級距） */}
+          {/* 3. 價格等級 */}
           <div className="space-y-1.5">
             <label htmlFor="select-price" className="block text-sm font-semibold text-stone-800 flex items-center gap-1.5">
               <DollarSign className="w-4 h-4 text-emerald-700" />
-              <span>3. 價格</span>
+              <span>{siteText.priceLabel}</span>
             </label>
             <select
               id="select-price"
@@ -118,11 +128,11 @@ export const SearchForm: React.FC<SearchFormProps> = ({
             </select>
           </div>
 
-          {/* 4. 最低評分（無 GOOGLE 字樣） */}
+          {/* 4. 最低評分 */}
           <div className="space-y-1.5">
             <label htmlFor="select-rating" className="block text-sm font-semibold text-stone-800 flex items-center gap-1.5">
               <Star className="w-4 h-4 text-emerald-700" />
-              <span>4. 最低評分</span>
+              <span>{siteText.ratingLabel}</span>
             </label>
             <select
               id="select-rating"
@@ -141,7 +151,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           <div className="space-y-1.5">
             <label htmlFor="select-lodging-type" className="block text-sm font-semibold text-stone-800 flex items-center gap-1.5">
               <Home className="w-4 h-4 text-emerald-700" />
-              <span>5. 住宿類型</span>
+              <span>{siteText.lodgingTypeLabel}</span>
             </label>
             <select
               id="select-lodging-type"
@@ -167,7 +177,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
             className="w-full py-3.5 px-6 bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 text-white font-bold text-base rounded-xl transition-colors duration-150 flex items-center justify-center gap-2 shadow-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:opacity-75 cursor-pointer"
           >
             <Search className="w-5 h-5" />
-            <span>{isSearching ? '正在產生查詢條件...' : '搜尋最新住宿資訊'}</span>
+            <span>{isSearching ? '正在產生查詢條件...' : siteText.searchButtonText}</span>
           </button>
         </div>
       </form>

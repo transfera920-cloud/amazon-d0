@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle, Key, Loader2 } from 'lucide-react';
 import { SearchCriteria, TrailheadLocation } from '../types';
 import { getTrailheadLocation } from '../data/trailheads';
 import { getNearbyAccommodations, AccommodationsSearchResult } from '../data/lodgings';
 import { MapPreview } from './MapPreview';
+import { useSiteConfig } from '../context/SiteConfigContext';
 
 interface SearchResultsProps {
   criteria: SearchCriteria;
@@ -11,12 +12,25 @@ interface SearchResultsProps {
 }
 
 export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearched }) => {
+  const { siteText, openAdmin } = useSiteConfig();
   const currentTrailheadName = criteria.trailhead.trim() || '屯原登山口';
 
   const [location, setLocation] = useState<TrailheadLocation | null>(null);
   const [geocodingError, setGeocodingError] = useState<string | null>(null);
   const [searchResult, setSearchResult] = useState<AccommodationsSearchResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [keyUpdateTick, setKeyUpdateTick] = useState<number>(0);
+
+  // 監聽金鑰變更，即時重新查詢
+  useEffect(() => {
+    const handleKeyChange = () => {
+      setKeyUpdateTick((prev) => prev + 1);
+    };
+    window.addEventListener('google-api-key-changed', handleKeyChange);
+    return () => {
+      window.removeEventListener('google-api-key-changed', handleKeyChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasSearched) return;
@@ -86,6 +100,7 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
     criteria.priceRange,
     criteria.minRating,
     criteria.lodgingType,
+    keyUpdateTick,
   ]);
 
   if (!hasSearched) {
@@ -110,9 +125,17 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
         <div className="p-5 bg-rose-50 border border-rose-200 rounded-xl text-center">
           <AlertCircle className="w-8 h-8 text-rose-600 mx-auto mb-2" />
           <h3 className="font-bold text-rose-900 text-base mb-1">{geocodingError}</h3>
-          <p className="text-xs text-rose-700 max-w-md mx-auto mt-1">
-            請確認登山口名稱是否正確（例：屯原、塔塔加、雪山、向陽、小風口等），或改用鄰近鄉鎮知名地標進行搜尋。
+          <p className="text-xs text-rose-700 max-w-md mx-auto mt-1 mb-3">
+            {siteText.geocodingErrorMessage}
           </p>
+          <button
+            type="button"
+            onClick={openAdmin}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold transition-colors cursor-pointer"
+          >
+            <Key className="w-3.5 h-3.5" />
+            前往後台設定 API 金鑰
+          </button>
         </div>
       )}
 
@@ -120,24 +143,35 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
       {!geocodingError && searchResult && (
         <>
           {searchResult.dataSource === 'offline_fallback' ? (
-            <div className="mb-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs sm:text-sm flex items-start gap-2.5">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <div className="font-bold">目前顯示離線備援資料，非即時 Google 資料</div>
-                <div className="text-amber-800 text-xs mt-0.5">
-                  {searchResult.errorMessage || '未設定 Google Maps API 金鑰或 API 連線異常'}
-                </div>
-                <div className="text-amber-700 text-xs font-medium mt-1">
-                  ※ 車程為粗估，山區實際車程可能更長，請以 Google 地圖實際路線為準
+            <div className="mb-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs sm:text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold">{siteText.offlineFallbackTitle}</div>
+                  <div className="text-amber-800 text-xs mt-1 whitespace-pre-line leading-relaxed">
+                    {searchResult.errorMessage || '未設定 Google Maps API 金鑰或 API 連線異常'}
+                  </div>
+                  <div className="text-amber-700 text-xs font-medium mt-1">
+                    {siteText.offlineDriveWarning}
+                  </div>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={openAdmin}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Key className="w-3.5 h-3.5" />
+                後台金鑰設定
+              </button>
             </div>
           ) : (
             <div className="mb-3 px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span className="font-medium">
-                  即時 Google 資料：Places API (New) 住宿與 Routes API 駕車時間
+                  {siteText.googleLiveBadgeText}
                 </span>
               </div>
             </div>
@@ -147,7 +181,7 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
           {searchResult.errorType === 'ZERO_RESULTS' && (
             <div className="mb-3 px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-stone-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-stone-500 shrink-0" />
-              <span>{searchResult.errorMessage || '目前條件下無相符旅宿，請嘗試放寬車程或類型條件。'}</span>
+              <span>{searchResult.errorMessage || siteText.noResultsMessage}</span>
             </div>
           )}
         </>

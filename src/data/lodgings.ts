@@ -1,4 +1,5 @@
 import { LodgingPlace, SearchDataSource, SearchErrorType } from '../types';
+import { getGoogleMapsApiKey } from '../utils/apiKey';
 
 export interface AccommodationsSearchResult {
   lodgings: LodgingPlace[];
@@ -184,13 +185,32 @@ async function searchGoogleNearbyPlaces(
   }
 
   if (response.status === 403) {
-    throw { code: 'AUTH_403', message: 'Google Places API 授權失敗（403）：請確認金鑰已啟用「Places API (New)」，並檢查權限限制。' };
+    let googleDetail = '';
+    try {
+      const errJson = await response.json();
+      googleDetail = errJson?.error?.message || '';
+    } catch {
+      try {
+        googleDetail = await response.text();
+      } catch {}
+    }
+    const suffix = googleDetail ? `\nGoogle 回傳原因：${googleDetail}` : '';
+    throw {
+      code: 'AUTH_403',
+      message: `Google Places API 授權失敗（403）：請確認金鑰已啟用「Places API (New)」，並檢查權限限制。${suffix}`,
+    };
   }
   if (response.status === 429) {
     throw { code: 'QUOTA_429', message: 'Google Places API 額度用盡或頻率過高（429）：請稍後再試。' };
   }
   if (!response.ok) {
-    const errText = await response.text();
+    let errText = '';
+    try {
+      const errJson = await response.json();
+      errText = errJson?.error?.message || JSON.stringify(errJson);
+    } catch {
+      errText = await response.text().catch(() => '');
+    }
     throw { code: 'API_ERROR', message: `Google Places API 錯誤（HTTP ${response.status}）：${errText}` };
   }
 
@@ -300,7 +320,7 @@ export async function getNearbyAccommodations(
   priceRange: string = 'any',
   minRating: string = 'any'
 ): Promise<AccommodationsSearchResult> {
-  const apiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+  const apiKey = getGoogleMapsApiKey();
 
   // 若未設定 API 金鑰，使用離線備援資料並明確標示
   if (!apiKey) {
@@ -316,7 +336,7 @@ export async function getNearbyAccommodations(
       lodgings: offlineLodgings,
       dataSource: 'offline_fallback',
       errorType: 'NO_API_KEY',
-      errorMessage: '未設定 VITE_GOOGLE_MAPS_API_KEY 金鑰，目前顯示離線備援資料，非即時 Google 資料。車程為粗估，山區實際車程可能更長，請以 Google 地圖實際路線為準。',
+      errorMessage: '尚未設定 Google Maps API 金鑰，目前顯示離線備援資料，非即時 Google 資料。車程為粗估，山區實際車程可能更長，請以 Google 地圖實際路線為準。',
     };
   }
 
