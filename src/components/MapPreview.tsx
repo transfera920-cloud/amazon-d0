@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { LodgingPlace } from '../types';
+import { LodgingPlace, SearchDataSource } from '../types';
 
 interface MapPreviewProps {
   trailheadName: string;
@@ -10,6 +10,7 @@ interface MapPreviewProps {
   driveTime: string;
   lodgings: LodgingPlace[];
   isLoadingLodgings?: boolean;
+  dataSource?: SearchDataSource;
 }
 
 export const MapPreview: React.FC<MapPreviewProps> = ({
@@ -19,6 +20,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
   driveTime,
   lodgings,
   isLoadingLodgings = false,
+  dataSource = 'google',
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -32,14 +34,14 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
       case '30m':
         return 18000;
       case '60m':
-        return 35000;
+        return 32000;
       case '90m':
-        return 50000;
+        return 45000;
       case '120m':
-        return 68000;
+        return 55000;
       case 'any':
       default:
-        return 55000;
+        return 50000;
     }
   };
 
@@ -92,7 +94,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
 
       trailheadMarker.bindPopup(`
         <div style="padding: 4px; font-family: sans-serif;">
-          <div style="font-size: 11px; color: #047857; font-weight: bold; margin-bottom: 2px;">登山口起點</div>
+          <div style="font-size: 11px; color: #047857; font-weight: bold; margin-bottom: 2px;">登山口座標起點</div>
           <div style="font-size: 15px; font-weight: bold; color: #1c1917;">${trailheadName}</div>
           <div style="font-size: 12px; color: #78716c; margin-top: 3px;">D0 住宿搜尋參考中心點</div>
         </div>
@@ -105,7 +107,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
         radius: getRadiusMeters(driveTime),
         color: '#059669',
         fillColor: '#10b981',
-        fillOpacity: 0.1,
+        fillOpacity: 0.08,
         weight: 1.5,
         dashArray: '5, 8',
       }).addTo(map);
@@ -127,7 +129,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
         trailheadMarkerRef.current.setLatLng([latitude, longitude]);
         trailheadMarkerRef.current.setPopupContent(`
           <div style="padding: 4px; font-family: sans-serif;">
-            <div style="font-size: 11px; color: #047857; font-weight: bold; margin-bottom: 2px;">登山口起點</div>
+            <div style="font-size: 11px; color: #047857; font-weight: bold; margin-bottom: 2px;">登山口座標起點</div>
             <div style="font-size: 15px; font-weight: bold; color: #1c1917;">${trailheadName}</div>
             <div style="font-size: 12px; color: #78716c; margin-top: 3px;">D0 住宿搜尋參考中心點</div>
           </div>
@@ -141,13 +143,12 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
     }
   }, [latitude, longitude, trailheadName, driveTime]);
 
-  // 2. 當搜尋結果 (lodgings) 更新時，直接在地圖預覽繪製所有住宿點標記
+  // 2. 當搜尋結果 (lodgings) 更新時，在地圖預覽繪製所有住宿點標記
   useEffect(() => {
     const map = mapInstanceRef.current;
     const lodgingLayer = lodgingMarkersLayerRef.current;
     if (!map || !lodgingLayer) return;
 
-    // 清空舊的住宿標記
     lodgingLayer.clearLayers();
 
     const boundsPoints: L.LatLngExpression[] = [[latitude, longitude]];
@@ -155,7 +156,6 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
     lodgings.forEach((lodging) => {
       boundsPoints.push([lodging.latitude, lodging.longitude]);
 
-      // 依住宿種類給予相應標記造型
       const isHotel = lodging.typeCategory === 'hotel';
       const isCamp = lodging.typeCategory === 'camp';
       const isHostel = lodging.typeCategory === 'hostel';
@@ -187,32 +187,47 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
         popupAnchor: [0, -16],
       });
 
-      const navUrl = `https://www.google.com/maps/search/${encodeURIComponent(lodging.name)}`;
+      const navUrl =
+        lodging.googleMapsUri ||
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lodging.name)}`;
 
       const marker = L.marker([lodging.latitude, lodging.longitude], {
         icon: lodgingIcon,
       });
 
-      // 點擊地標彈出卡片（顯示條件、價格、評分、車程與導航）
+      const driveTimeDisplay =
+        lodging.driveMinutes === 999
+          ? '車程計算中'
+          : `車程約 ${lodging.driveMinutes} 分鐘${
+              lodging.driveDistanceKm ? ` (${lodging.driveDistanceKm} km)` : ''
+            }`;
+
+      const ratingDisplay =
+        lodging.rating > 0
+          ? `★ ${lodging.rating.toFixed(1)}${
+              lodging.userRatingCount ? ` (${lodging.userRatingCount.toLocaleString()} 則評論)` : ''
+            }`
+          : '尚無評分';
+
       marker.bindPopup(`
-        <div style="padding: 6px 4px; min-width: 190px; font-family: sans-serif;">
+        <div style="padding: 6px 4px; min-width: 200px; max-width: 260px; font-family: sans-serif;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px;">
             <span style="font-size: 11px; background-color: #f5f5f4; color: #44403c; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
               ${lodging.type}
             </span>
             <span style="font-size: 11px; color: #b45309; font-weight: bold;">
-              車程約 ${lodging.driveMinutes} 分鐘
+              ${driveTimeDisplay}
             </span>
           </div>
-          <div style="font-size: 14px; font-weight: bold; color: #1c1917; margin-bottom: 4px;">
+          <div style="font-size: 14px; font-weight: bold; color: #1c1917; margin-bottom: 4px; line-height: 1.3;">
             ${lodging.name}
           </div>
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin: 4px 0 8px 0; background: #fafaf9; padding: 4px 8px; border-radius: 6px; border: 1px solid #e7e5e4;">
-            <span style="color: #047857; font-weight: 700;">約 NT$ ${lodging.price.toLocaleString()}</span>
-            <span style="color: #d97706; font-weight: 600;">★ ${lodging.rating.toFixed(1)}</span>
+            <span style="color: #047857; font-weight: 700;">${lodging.priceText}</span>
+            <span style="color: #d97706; font-weight: 600;">${ratingDisplay}</span>
           </div>
-          <div style="font-size: 11px; color: #78716c; margin-bottom: 8px;">
-            地區：${lodging.area}
+          <div style="font-size: 11px; color: #78716c; margin-bottom: 8px; line-height: 1.3;">
+            ${lodging.area}
           </div>
           <a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="
             display: block;
@@ -233,7 +248,6 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
       lodgingLayer.addLayer(marker);
     });
 
-    // 自動縮放讓登山口與所有住宿搜尋結果皆能完整收納在預覽視角中
     if (boundsPoints.length > 1) {
       map.fitBounds(boundsPoints, {
         padding: [40, 40],
@@ -258,9 +272,17 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
     <div className="relative w-full h-96 sm:h-[420px] rounded-xl overflow-hidden border border-stone-200 shadow-inner bg-stone-100">
       <div ref={mapContainerRef} className="w-full h-full z-10" />
 
-      {/* 地圖右上角：搜尋結果標記統計 */}
+      {/* 地圖右上角：搜尋結果標記統計與資料來源 */}
       <div className="absolute top-3 right-3 z-20 bg-white/95 backdrop-blur-xs px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-800 border border-stone-200 shadow-sm flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+        <span
+          className={`w-2 h-2 rounded-full ${
+            isLoadingLodgings
+              ? 'bg-amber-500 animate-pulse'
+              : dataSource === 'google'
+              ? 'bg-emerald-600'
+              : 'bg-amber-600'
+          }`}
+        />
         {isLoadingLodgings ? (
           <span>正在搜尋符合條件之住宿...</span>
         ) : (
@@ -268,12 +290,12 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
         )}
       </div>
 
-      {/* 無符合條件時的友善提示 */}
+      {/* 無符合條件時的提示 */}
       {!isLoadingLodgings && lodgings.length === 0 && (
         <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/20 pointer-events-none">
           <div className="bg-white/95 backdrop-blur-xs p-4 rounded-xl border border-stone-200 shadow-md text-center max-w-sm">
             <p className="text-sm font-bold text-stone-800">目前條件下暫無完全符合之住宿</p>
-            <p className="text-xs text-stone-500 mt-1">建議放寬「車程」、「價格」或「住宿類型」等條件後重新搜尋</p>
+            <p className="text-xs text-stone-500 mt-1">建議放寬「車程時間」或「住宿類型」條件後重試</p>
           </div>
         </div>
       )}

@@ -26,18 +26,93 @@ export const COMMON_TRAILHEAD_COORDINATES: Record<string, TrailheadLocation> = {
   司馬庫斯: { name: '司馬庫斯登山口', latitude: 24.5772, longitude: 121.3341 },
 };
 
-export function getTrailheadLocation(query: string): TrailheadLocation {
+/**
+ * 取得登山口經緯度座標：
+ * 1. 優先比對 COMMON_TRAILHEAD_COORDINATES 內建精準常用登山口
+ * 2. 若不在清單中，呼叫 Google Geocoding API 查詢真實地理座標
+ * 3. 若 Google 也查無結果，拋出明確錯誤：「查無此登山口，請確認名稱或改用鄰近鄉鎮」
+ */
+export async function getTrailheadLocation(query: string): Promise<TrailheadLocation> {
   const clean = query.trim();
   if (!clean) {
     return { name: '屯原登山口', latitude: 24.0381, longitude: 121.2372 };
   }
 
+  // 1. 先比對內建精準清單
   for (const [key, val] of Object.entries(COMMON_TRAILHEAD_COORDINATES)) {
     if (clean.includes(key) || key.includes(clean)) {
-      return { ...val, name: clean };
+      return { ...val, name: clean, isFromGoogle: false };
     }
   }
 
-  // 預設台灣中央山脈核心基準點（合歡/埔里山區）
-  return { name: clean, latitude: 23.9738, longitude: 120.9820 };
+  // 2. 使用者自訂非清單登山口：呼叫 Google Geocoding API
+  const apiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+
+  if (!apiKey) {
+    throw new Error(
+      `未設定 VITE_GOOGLE_MAPS_API_KEY 金鑰，且「${clean}」不在常用清單中。請改用清單登山口（如屯原、塔塔加、雪山、向陽等）或設定 Google Maps API 金鑰。`
+    );
+  }
+
+  const directUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+    clean
+  )}&key=${apiKey}&language=zh-TW`;
+  const proxyUrl = `/proxy-google-maps/maps/api/geocode/json?address=${encodeURIComponent(
+    clean
+  )}&key=${apiKey}&language=zh-TW`;
+
+  let response: Response;
+  try {
+    response = await fetch(directUrl);
+  } catch (directErr) {
+    // 瀏覽器端若遇 CORS 限制，平滑改走開發代理
+    try {
+      response = await fetch(proxyUrl);
+    } catch {
+      throw new Error('無法連線至 Google Maps Geocoding API，請檢查網路連線或金鑰設定。');
+    }
+  }
+
+  if (response.status === 403) {
+    throw new Error('Google Maps API 授權失敗（403）：請確認金鑰是否有效，且已在 Google Cloud 啟用 Geocoding API。');
+  }
+
+  if (response.status === 429) {
+    throw new Error('Google Maps API 額度用盡或頻率過高（429）：請稍後再試。');
+  }
+
+  if (!response.ok) {
+    throw new Error(`Google Maps API 回應異常（HTTP ${response.status}）`);
+  }
+
+  const data = await response.json();
+
+  if (data.status === 'ZERO_RESULTS' || !data.results || data.results.length === 0) {
+    throw new Error('查無此登山口，請確認名稱或改用鄰近鄉鎮');
+  }
+
+  if (data.status === 'REQUEST_DENIED') {
+    throw new Error(
+      `Google Maps API 授權失敗（403/REQUEST_DENIED）：${data.error_message || '請確認已啟用 Geocoding API 且金鑰權限設定正確。'}`
+    );
+  }
+
+  if (data.status === 'OVER_QUERY_LIMIT') {
+    throw new Error('Google Maps API 呼叫次數或額度已用盡（429/OVER_QUERY_LIMIT）：請稍後再試。');
+  }
+
+  if (data.status !== 'OK') {
+    throw new Error(`Google Maps 地理編碼查詢失敗（${data.status}）：${data.error_message || '請確認登山口名稱後重試。'}`);
+  }
+
+  const result = data.results[0];
+  const { lat, lng } = result.geometry.location;
+
+  return {
+    name: clean,
+    latitude: lat,
+    longitude: lng,
+    formattedAddress: result.formatted_address,
+    isFromGoogle: true,
+  };
 }

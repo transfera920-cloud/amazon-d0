@@ -1,6 +1,13 @@
-import { LodgingPlace } from '../types';
+import { LodgingPlace, SearchDataSource, SearchErrorType } from '../types';
 
-// 計算兩經緯度直線距離（公里）
+export interface AccommodationsSearchResult {
+  lodgings: LodgingPlace[];
+  dataSource: SearchDataSource;
+  errorType: SearchErrorType;
+  errorMessage?: string;
+}
+
+// 備援計算：兩經緯度直線距離（公里）
 export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // 地球半徑 (km)
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -15,15 +22,15 @@ export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lo
   return R * c;
 }
 
-// 估算山區路程開車時間（山路彎曲係數約 1.35，平均車速約 35 km/h）
-export function estimateDriveMinutes(distanceKm: number): number {
+// 備援計算：山區離線估算車程（僅在無 Google API 金鑰或 API 斷線備援時使用）
+export function estimateOfflineDriveMinutes(distanceKm: number): number {
   const mountainRoadDistance = distanceKm * 1.35;
   const minutes = Math.round((mountainRoadDistance / 35) * 60);
   return Math.max(10, minutes);
 }
 
-// 台灣各大主要百岳登山口周邊登記旅宿與山莊資料，涵蓋各價位帶（以500元為級距）與不同評分
-export const KNOWN_MOUNTAIN_LODGINGS: Omit<LodgingPlace, 'driveMinutes'>[] = [
+// 離線備援資料庫：僅在 Google API 完全連不上或未設定金鑰時作為最後備援
+export const KNOWN_MOUNTAIN_LODGINGS: Omit<LodgingPlace, 'driveMinutes' | 'priceText'>[] = [
   // --- 屯原登山口周邊（廬山溫泉、春陽、霧社、仁愛鄉、清境） ---
   { id: 'ty-1', name: '蜜月館大飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.0205, longitude: 121.1852, area: '廬山溫泉區', price: 2300, rating: 4.1 },
   { id: 'ty-2', name: '碧綠大飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.0198, longitude: 121.1835, area: '廬山溫泉區', price: 1800, rating: 3.9 },
@@ -35,58 +42,428 @@ export const KNOWN_MOUNTAIN_LODGINGS: Omit<LodgingPlace, 'driveMinutes'>[] = [
   { id: 'ty-8', name: '雲海景觀山莊', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.0320, longitude: 121.1550, area: '仁愛鄉清境方向', price: 3200, rating: 4.5 },
   { id: 'ty-9', name: '清境天星棧青年旅舍', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 24.0450, longitude: 121.1610, area: '清境農場周邊', price: 950, rating: 4.6 },
   { id: 'ty-10', name: '清境老英格蘭莊園', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.0410, longitude: 121.1580, area: '清境農場周邊', price: 6500, rating: 4.7 },
-  { id: 'ty-11', name: '廬山天下第一泉溫泉會館', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.0180, longitude: 121.1820, area: '廬山溫泉區', price: 3600, rating: 4.3 },
-  { id: 'ty-12', name: '廬山背包客棧棧點', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 24.0195, longitude: 121.1855, area: '廬山溫泉區', price: 1200, rating: 4.2 },
 
-  // --- 塔塔加登山口 / 玉山口周邊（東埔溫泉、同富、阿里山園區） ---
+  // --- 塔塔加登山口 / 玉山口周邊 ---
   { id: 'tt-1', name: '東埔大飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 23.5621, longitude: 120.9298, area: '東埔溫泉區', price: 2200, rating: 3.8 },
   { id: 'tt-2', name: '帝綸溫泉渡假大飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 23.5605, longitude: 120.9312, area: '東埔溫泉區', price: 3300, rating: 4.2 },
   { id: 'tt-3', name: '沙里仙溫泉渡假村', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 23.5678, longitude: 120.9215, area: '東埔溫泉區', price: 3800, rating: 4.5 },
-  { id: 'tt-4', name: '勝華溫泉大飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 23.5615, longitude: 120.9305, area: '東埔溫泉區', price: 1700, rating: 3.7 },
   { id: 'tt-5', name: '達瑪巒風味民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 23.5850, longitude: 120.8950, area: '信義鄉同富', price: 1300, rating: 4.3 },
-  { id: 'tt-6', name: '望鄉部落老爹農莊民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 23.5930, longitude: 120.8920, area: '望鄉部落', price: 1450, rating: 4.6 },
   { id: 'tt-7', name: '阿里山閣大飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 23.5185, longitude: 120.8140, area: '阿里山遊樂區', price: 4200, rating: 4.0 },
-  { id: 'tt-8', name: '櫻山大飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 23.5122, longitude: 120.8035, area: '阿里山遊樂區', price: 2900, rating: 3.9 },
   { id: 'tt-9', name: '阿里山天主堂登山背包客中心', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 23.5110, longitude: 120.8020, area: '阿里山遊樂區', price: 850, rating: 4.4 },
-  { id: 'tt-10', name: '自忠廢棄派出所周邊野營地', type: '露營區 / 登山山莊', typeCategory: 'camp', latitude: 23.4980, longitude: 120.8520, area: '自忠特富野', price: 600, rating: 4.1 },
-  { id: 'tt-11', name: '阿里山賓館', type: '飯店旅館', typeCategory: 'hotel', latitude: 23.5140, longitude: 120.8060, area: '阿里山遊樂區', price: 7800, rating: 4.6 },
-  { id: 'tt-12', name: '東埔源頭溫泉山莊', type: '露營區 / 登山山莊', typeCategory: 'camp', latitude: 23.5640, longitude: 120.9320, area: '東埔溫泉區', price: 1100, rating: 4.0 },
 
   // --- 雪山登山口 / 武陵周邊 ---
   { id: 'sy-1', name: '武陵國民賓館', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.3582, longitude: 121.3115, area: '武陵農場', price: 3400, rating: 4.3 },
   { id: 'sy-2', name: '武陵富野渡假村', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.3601, longitude: 121.3130, area: '武陵農場', price: 5200, rating: 4.5 },
   { id: 'sy-3', name: '武陵農場露營區', type: '露營區 / 登山山莊', typeCategory: 'camp', latitude: 24.3810, longitude: 121.3150, area: '武陵農場高山區', price: 1000, rating: 4.4 },
   { id: 'sy-4', name: '環山部落屋民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.3120, longitude: 121.2950, area: '環山部落', price: 1300, rating: 4.6 },
-  { id: 'sy-5', name: '詩歌謠天空民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.3135, longitude: 121.2940, area: '環山部落', price: 1700, rating: 4.7 },
-  { id: 'sy-6', name: '環山光果背包客之家', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 24.3110, longitude: 121.2930, area: '環山部落', price: 900, rating: 4.5 },
-  { id: 'sy-7', name: '武陵青葉農場民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.3410, longitude: 121.3250, area: '武陵外圍', price: 2600, rating: 4.2 },
 
   // --- 向陽登山口 / 嘉明湖周邊 ---
   { id: 'xy-1', name: '利稻喜度民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 23.1895, longitude: 121.0320, area: '利稻部落', price: 1200, rating: 4.5 },
-  { id: 'xy-2', name: '利稻陳大姐名產民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 23.1880, longitude: 121.0310, area: '利稻部落', price: 1400, rating: 4.3 },
   { id: 'xy-3', name: '天龍溫泉飯店', type: '飯店旅館', typeCategory: 'hotel', latitude: 23.1670, longitude: 121.0450, area: '霧鹿溫泉區', price: 3200, rating: 4.2 },
   { id: 'xy-4', name: '向陽青年旅棧', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 23.1870, longitude: 121.0335, area: '利稻部落', price: 800, rating: 4.4 },
-  { id: 'xy-5', name: '南橫下馬溫泉露營區', type: '露營區 / 登山山莊', typeCategory: 'camp', latitude: 23.1720, longitude: 121.0410, area: '下馬部落', price: 900, rating: 4.1 },
-  { id: 'xy-6', name: '霧鹿部落星空民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 23.1690, longitude: 121.0430, area: '霧鹿部落', price: 2200, rating: 4.6 },
 
-  // --- 合歡山 / 小風口 / 松雪樓周邊 ---
+  // --- 合歡山周邊 ---
   { id: 'hh-1', name: '松雪樓', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.1424, longitude: 121.2721, area: '合歡山', price: 4200, rating: 4.5 },
   { id: 'hh-2', name: '滑雪山莊', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 24.1415, longitude: 121.2735, area: '合歡山', price: 1200, rating: 4.3 },
   { id: 'hh-3', name: '觀雲山莊', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 24.1785, longitude: 121.3250, area: '大禹嶺關原', price: 950, rating: 4.4 },
-  { id: 'hh-4', name: '合歡山小風口露營車宿區', type: '露營區 / 登山山莊', typeCategory: 'camp', latitude: 24.1610, longitude: 121.2840, area: '合歡山小風口', price: 700, rating: 4.0 },
-  { id: 'hh-5', name: '大禹嶺欣欣民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.1810, longitude: 121.3150, area: '大禹嶺', price: 1600, rating: 3.9 },
-
-  // --- 鎮西堡 / 司馬庫斯周邊 ---
-  { id: 'zs-1', name: '鎮西堡阿慕依民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.5530, longitude: 121.3120, area: '鎮西堡部落', price: 1500, rating: 4.4 },
-  { id: 'zs-2', name: '司馬庫斯喜籟民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.5780, longitude: 121.3320, area: '司馬庫斯部落', price: 2300, rating: 4.6 },
-  { id: 'zs-3', name: '秀巒溫泉野營民宿', type: '露營區 / 登山山莊', typeCategory: 'camp', latitude: 24.6200, longitude: 121.2850, area: '秀巒部落', price: 800, rating: 4.1 },
-  { id: 'zs-4', name: '鎮西堡波塔斯背包客棧', type: '青年旅館 / 背包客棧', typeCategory: 'hostel', latitude: 24.5510, longitude: 121.3140, area: '鎮西堡部落', price: 950, rating: 4.3 },
-  { id: 'zs-5', name: '泰崗部落景觀渡假會館', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.5910, longitude: 121.3050, area: '泰崗部落', price: 3500, rating: 4.5 },
 ];
 
 /**
- * 嚴格比對價格區間（以500元為級距）
+ * 依住宿類型對應 Google 官方 Place (New) 類型：
+ * hotel（飯店旅館）→ hotel
+ * homestay（民宿）→ guest_house、bed_and_breakfast
+ * hostel（青年旅館/背包客棧）→ hostel
+ * camp（露營/山莊）→ campground
+ * all（不分類）→ 上述全部一起放進 includedTypes
  */
+function getIncludedPlaceTypes(typeCategory: string): string[] {
+  switch (typeCategory) {
+    case 'hotel':
+      return ['hotel'];
+    case 'homestay':
+      return ['guest_house', 'bed_and_breakfast'];
+    case 'hostel':
+      return ['hostel'];
+    case 'camp':
+      return ['campground'];
+    case 'all':
+    default:
+      return ['hotel', 'guest_house', 'bed_and_breakfast', 'hostel', 'campground'];
+  }
+}
+
+/**
+ * 將 Google Place Types 解析為內部分類
+ */
+function parseTypeCategory(types: string[] = []): { category: 'homestay' | 'hostel' | 'hotel' | 'camp'; label: string } {
+  if (types.includes('campground')) {
+    return { category: 'camp', label: '露營 / 山莊' };
+  }
+  if (types.includes('hostel')) {
+    return { category: 'hostel', label: '青年旅館 / 背包客棧' };
+  }
+  if (types.includes('hotel')) {
+    return { category: 'hotel', label: '飯店旅館' };
+  }
+  if (types.includes('guest_house') || types.includes('bed_and_breakfast')) {
+    return { category: 'homestay', label: '民宿 / B&B' };
+  }
+  return { category: 'homestay', label: '旅宿' };
+}
+
+/**
+ * 依 Google priceLevel 格式化文字（未提供則顯示「未提供，請洽詢」）
+ */
+function formatPriceText(priceLevel?: string): { text: string; price: number } {
+  switch (priceLevel) {
+    case 'PRICE_LEVEL_FREE':
+      return { text: '免費提供', price: 0 };
+    case 'PRICE_LEVEL_INEXPENSIVE':
+      return { text: '平價 ($)', price: 1000 };
+    case 'PRICE_LEVEL_MODERATE':
+      return { text: '中等 ($$)', price: 2200 };
+    case 'PRICE_LEVEL_EXPENSIVE':
+      return { text: '高價 ($$$)', price: 3500 };
+    case 'PRICE_LEVEL_VERY_EXPENSIVE':
+      return { text: '頂級奢華 ($$$$)', price: 5000 };
+    default:
+      // Google 沒有該筆價格資訊時，顯示「未提供，請洽詢」，不自行編造數字
+      return { text: '未提供，請洽詢', price: -1 };
+  }
+}
+
+/**
+ * 呼叫 Google Places API (New) Nearby Search
+ */
+async function searchGoogleNearbyPlaces(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  typeCategory: string,
+  apiKey: string
+): Promise<any[]> {
+  const directUrl = 'https://places.googleapis.com/v1/places:searchNearby';
+  const proxyUrl = '/proxy-google-places/v1/places:searchNearby';
+
+  const requestBody = {
+    includedTypes: getIncludedPlaceTypes(typeCategory),
+    maxResultCount: 20,
+    locationRestriction: {
+      circle: {
+        center: {
+          latitude: lat,
+          longitude: lng,
+        },
+        // Places API (New) 的半徑上限為 50,000 公尺
+        radius: Math.min(50000.0, Math.max(5000.0, radiusMeters)),
+      },
+    },
+  };
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Goog-Api-Key': apiKey,
+    'X-Goog-FieldMask':
+      'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.types,places.googleMapsUri',
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(directUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+  } catch {
+    // 透過本機代理重試
+    response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+  }
+
+  if (response.status === 403) {
+    throw { code: 'AUTH_403', message: 'Google Places API 授權失敗（403）：請確認金鑰已啟用「Places API (New)」，並檢查權限限制。' };
+  }
+  if (response.status === 429) {
+    throw { code: 'QUOTA_429', message: 'Google Places API 額度用盡或頻率過高（429）：請稍後再試。' };
+  }
+  if (!response.ok) {
+    const errText = await response.text();
+    throw { code: 'API_ERROR', message: `Google Places API 錯誤（HTTP ${response.status}）：${errText}` };
+  }
+
+  const data = await response.json();
+  return data.places || [];
+}
+
+/**
+ * 呼叫 Google Routes API computeRouteMatrix 取得真實駕車距離與時間
+ */
+async function computeRealDriveRoutes(
+  originLat: number,
+  originLng: number,
+  destinations: { lat: number; lng: number }[],
+  apiKey: string
+): Promise<{ driveMinutes: number; distanceKm: number }[]> {
+  if (destinations.length === 0) return [];
+
+  const directUrl = 'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix';
+  const proxyUrl = '/proxy-google-routes/distanceMatrix/v2:computeRouteMatrix';
+
+  const requestBody = {
+    origins: [
+      {
+        waypoint: {
+          location: {
+            latLng: {
+              latitude: originLat,
+              longitude: originLng,
+            },
+          },
+        },
+      },
+    ],
+    destinations: destinations.map((d) => ({
+      waypoint: {
+        location: {
+          latLng: {
+            latitude: d.lat,
+            longitude: d.lng,
+          },
+        },
+      },
+    })),
+    travelMode: 'DRIVE',
+    routingPreference: 'TRAFFIC_UNAWARE',
+  };
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Goog-Api-Key': apiKey,
+    'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,distanceMeters,duration',
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(directUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+  } catch {
+    response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+  }
+
+  if (!response.ok) {
+    // 若 Routes API 暫時無法計算，回退預設無路程估計
+    return destinations.map(() => ({ driveMinutes: 999, distanceKm: 0 }));
+  }
+
+  const elements = await response.json();
+  // elements 是一組陣列：每個物件有 destinationIndex, duration ('1230s'), distanceMeters
+  const resultMap: Record<number, { driveMinutes: number; distanceKm: number }> = {};
+
+  if (Array.isArray(elements)) {
+    elements.forEach((item: any) => {
+      const idx = item.destinationIndex ?? 0;
+      if (item.condition === 'ROUTE_EXISTS' && item.duration) {
+        const seconds = parseInt(item.duration.replace('s', ''), 10) || 0;
+        const driveMinutes = Math.max(1, Math.round(seconds / 60));
+        const distanceKm = Math.round(((item.distanceMeters || 0) / 1000) * 10) / 10;
+        resultMap[idx] = { driveMinutes, distanceKm };
+      } else {
+        resultMap[idx] = { driveMinutes: 999, distanceKm: 0 };
+      }
+    });
+  }
+
+  return destinations.map((_, i) => resultMap[i] || { driveMinutes: 999, distanceKm: 0 });
+}
+
+/**
+ * 取得周邊住宿資料：
+ * 1. 主要呼叫 Google Places API (New) Nearby Search 與 Google Routes API computeRouteMatrix
+ * 2. 只有在 Google API 完全連不上或未設定金鑰時，才作為最後備援回退到 KNOWN_MOUNTAIN_LODGINGS
+ * 3. 畫面上依 dataSource 清楚揭露「目前顯示離線備援資料，非即時 Google 資料」
+ */
+export async function getNearbyAccommodations(
+  trailheadLat: number,
+  trailheadLon: number,
+  maxDriveMinutes: number,
+  typeFilter: string,
+  priceRange: string = 'any',
+  minRating: string = 'any'
+): Promise<AccommodationsSearchResult> {
+  const apiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+
+  // 若未設定 API 金鑰，使用離線備援資料並明確標示
+  if (!apiKey) {
+    const offlineLodgings = getOfflineFallbackLodgings(
+      trailheadLat,
+      trailheadLon,
+      maxDriveMinutes,
+      typeFilter,
+      priceRange,
+      minRating
+    );
+    return {
+      lodgings: offlineLodgings,
+      dataSource: 'offline_fallback',
+      errorType: 'NO_API_KEY',
+      errorMessage: '未設定 VITE_GOOGLE_MAPS_API_KEY 金鑰，目前顯示離線備援資料，非即時 Google 資料。',
+    };
+  }
+
+  // 設定搜尋半徑：車程越長搜尋半徑越大，最高 50 公里
+  let radiusMeters = 30000;
+  if (maxDriveMinutes <= 30) radiusMeters = 18000;
+  else if (maxDriveMinutes <= 60) radiusMeters = 32000;
+  else if (maxDriveMinutes <= 90) radiusMeters = 45000;
+  else radiusMeters = 50000;
+
+  try {
+    // 步驟 1：呼叫 Google Places API (New) 搜尋即時旅宿
+    const rawPlaces = await searchGoogleNearbyPlaces(trailheadLat, trailheadLon, radiusMeters, typeFilter, apiKey);
+
+    if (rawPlaces.length === 0) {
+      return {
+        lodgings: [],
+        dataSource: 'google',
+        errorType: 'ZERO_RESULTS',
+        errorMessage: '在設定的範圍與條件內，Google Places 查無相關住宿，建議擴大車程時間或住宿類型。',
+      };
+    }
+
+    // 步驟 2：呼叫 Google Routes API computeRouteMatrix 取得真實駕車時間與距離
+    const destinations = rawPlaces.map((p) => ({
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+    }));
+
+    const routeResults = await computeRealDriveRoutes(trailheadLat, trailheadLon, destinations, apiKey);
+
+    // 步驟 3：組合真實資料
+    const googleLodgings: LodgingPlace[] = rawPlaces.map((p, idx) => {
+      const typeInfo = parseTypeCategory(p.types);
+      const priceInfo = formatPriceText(p.priceLevel);
+      const route = routeResults[idx] || { driveMinutes: 999, distanceKm: 0 };
+
+      return {
+        id: p.id || `google-${idx}`,
+        name: p.displayName?.text || '旅宿',
+        type: typeInfo.label,
+        typeCategory: typeInfo.category,
+        latitude: p.location.latitude,
+        longitude: p.location.longitude,
+        driveMinutes: route.driveMinutes,
+        driveDistanceKm: route.distanceKm,
+        area: p.formattedAddress || 'Google 地圖登記地點',
+        price: priceInfo.price,
+        priceText: priceInfo.text,
+        priceLevel: p.priceLevel,
+        rating: typeof p.rating === 'number' ? p.rating : 0,
+        userRatingCount: p.userRatingCount || 0,
+        googleMapsUri: p.googleMapsUri,
+      };
+    });
+
+    // 步驟 4：依使用者選擇的條件過濾
+    const filtered = googleLodgings.filter((item) => {
+      // 車程條件過濾（如果路線無法到達排除或不限車程）
+      if (maxDriveMinutes < 999 && item.driveMinutes > maxDriveMinutes) {
+        return false;
+      }
+      // 最低評分條件過濾
+      if (minRating !== 'any') {
+        const min = parseFloat(minRating);
+        if (item.rating < min) return false;
+      }
+      // 價格過濾：若 Google 未提供價格資訊則不強制排除，若有提供則嚴格比對
+      if (priceRange !== 'any' && item.price > 0) {
+        if (!matchesPrice(item.price, priceRange)) return false;
+      }
+      return true;
+    });
+
+    // 依真實車程時間由近至遠排序
+    filtered.sort((a, b) => a.driveMinutes - b.driveMinutes);
+
+    if (filtered.length === 0) {
+      return {
+        lodgings: [],
+        dataSource: 'google',
+        errorType: 'ZERO_RESULTS',
+        errorMessage: '經車程與條件篩選後暫無符合之住宿，建議放寬車程或評分門檻。',
+      };
+    }
+
+    return {
+      lodgings: filtered,
+      dataSource: 'google',
+      errorType: 'NONE',
+    };
+  } catch (err: any) {
+    // 依錯誤類型產生詳細提示，並切換至離線備援資料
+    const errorType: SearchErrorType =
+      err.code === 'AUTH_403' ? 'AUTH_403' : err.code === 'QUOTA_429' ? 'QUOTA_429' : 'NETWORK_ERROR';
+
+    const fallbackList = getOfflineFallbackLodgings(
+      trailheadLat,
+      trailheadLon,
+      maxDriveMinutes,
+      typeFilter,
+      priceRange,
+      minRating
+    );
+
+    return {
+      lodgings: fallbackList,
+      dataSource: 'offline_fallback',
+      errorType,
+      errorMessage:
+        err.message || '無法連線至 Google Maps API，目前顯示離線備援資料，非即時 Google 資料。',
+    };
+  }
+}
+
+/**
+ * 離線備援篩選函式（僅在 API 失敗或未設金鑰時執行）
+ */
+function getOfflineFallbackLodgings(
+  trailheadLat: number,
+  trailheadLon: number,
+  maxDriveMinutes: number,
+  typeFilter: string,
+  priceRange: string,
+  minRating: string
+): LodgingPlace[] {
+  return KNOWN_MOUNTAIN_LODGINGS.map((item) => {
+    const distKm = calculateDistanceKm(trailheadLat, trailheadLon, item.latitude, item.longitude);
+    const driveMinutes = estimateOfflineDriveMinutes(distKm);
+    return {
+      ...item,
+      driveMinutes,
+      driveDistanceKm: Math.round(distKm * 10) / 10,
+      priceText: `約 NT$ ${item.price.toLocaleString()}`,
+    };
+  })
+    .filter((item) => {
+      const driveMatch = maxDriveMinutes >= 999 || item.driveMinutes <= maxDriveMinutes;
+      const typeMatch = typeFilter === 'all' || item.typeCategory === typeFilter;
+      const priceMatch = matchesPrice(item.price, priceRange);
+      const ratingMatch = minRating === 'any' || item.rating >= parseFloat(minRating);
+      const dist = calculateDistanceKm(trailheadLat, trailheadLon, item.latitude, item.longitude);
+      return driveMatch && typeMatch && priceMatch && ratingMatch && dist <= 75;
+    })
+    .sort((a, b) => a.driveMinutes - b.driveMinutes);
+}
+
 function matchesPrice(price: number, priceRange: string): boolean {
   switch (priceRange) {
     case '1000':
@@ -109,139 +486,4 @@ function matchesPrice(price: number, priceRange: string): boolean {
     default:
       return true;
   }
-}
-
-/**
- * 嚴格比對最低評分要求
- */
-function matchesRating(rating: number, minRating: string): boolean {
-  switch (minRating) {
-    case '3.5':
-      return rating >= 3.5;
-    case '4.0':
-      return rating >= 4.0;
-    case '4.5':
-      return rating >= 4.5;
-    case 'any':
-    default:
-      return true;
-  }
-}
-
-/**
- * 依登山口座標與完整設定條件查詢周邊住宿點
- */
-export async function getNearbyAccommodations(
-  trailheadLat: number,
-  trailheadLon: number,
-  maxDriveMinutes: number,
-  typeFilter: string,
-  priceRange: string = 'any',
-  minRating: string = 'any'
-): Promise<LodgingPlace[]> {
-  // 1. 先計算所有已知山區旅宿的實際距離與車程
-  const allCalculated: LodgingPlace[] = KNOWN_MOUNTAIN_LODGINGS.map((item) => {
-    const distKm = calculateDistanceKm(trailheadLat, trailheadLon, item.latitude, item.longitude);
-    const driveMinutes = estimateDriveMinutes(distKm);
-    return {
-      ...item,
-      driveMinutes,
-    };
-  });
-
-  // 2. 嚴格依五大條件篩選
-  const filtered = allCalculated.filter((item) => {
-    // 條件一：車程限制
-    const driveMatch = maxDriveMinutes >= 999 || item.driveMinutes <= maxDriveMinutes;
-    // 條件二：住宿類型
-    const typeMatch = typeFilter === 'all' || item.typeCategory === typeFilter;
-    // 條件三：價格等級（以500元為級距）
-    const priceMatch = matchesPrice(item.price, priceRange);
-    // 條件四：最低評分
-    const ratingMatch = matchesRating(item.rating, minRating);
-
-    // 最大物理距離限制在 75 公里內
-    const distanceKm = calculateDistanceKm(trailheadLat, trailheadLon, item.latitude, item.longitude);
-    return driveMatch && typeMatch && priceMatch && ratingMatch && distanceKm <= 75;
-  });
-
-  // 3. 如果自訂登山口附近已知資料較少，從公開 OpenStreetMap 補充點位
-  if (filtered.length < 2) {
-    try {
-      const radiusMeters = Math.min(45000, Math.max(15000, (maxDriveMinutes >= 999 ? 60 : maxDriveMinutes) * 600));
-      const query = `[out:json][timeout:3];(node["tourism"~"hotel|guest_house|hostel|camp_site|chalet|motel"](around:${radiusMeters},${trailheadLat},${trailheadLon}););out 12;`;
-      const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.elements)) {
-          const livePlaces = data.elements
-            .filter((el: any) => el.tags && (el.tags.name || el.tags['name:zh']))
-            .map((el: any, index: number): LodgingPlace => {
-              const name = el.tags['name:zh'] || el.tags.name;
-              const tourism = el.tags.tourism;
-              let type = '民宿 / B&B';
-              let typeCategory: 'homestay' | 'hostel' | 'hotel' | 'camp' = 'homestay';
-              let estimatedPrice = 1600;
-              let estimatedRating = 4.2;
-
-              if (tourism === 'hotel' || tourism === 'motel') {
-                type = '飯店旅館';
-                typeCategory = 'hotel';
-                estimatedPrice = 2800;
-                estimatedRating = 4.1;
-              } else if (tourism === 'hostel') {
-                type = '青年旅館 / 背包客棧';
-                typeCategory = 'hostel';
-                estimatedPrice = 900;
-                estimatedRating = 4.4;
-              } else if (tourism === 'camp_site' || tourism === 'chalet') {
-                type = '露營區 / 登山山莊';
-                typeCategory = 'camp';
-                estimatedPrice = 850;
-                estimatedRating = 4.3;
-              }
-
-              const distKm = calculateDistanceKm(trailheadLat, trailheadLon, el.lat, el.lon);
-              const driveMinutes = estimateDriveMinutes(distKm);
-
-              return {
-                id: `osm-${el.id || index}`,
-                name,
-                type,
-                typeCategory,
-                latitude: el.lat,
-                longitude: el.lon,
-                driveMinutes,
-                area: el.tags['addr:town'] || el.tags['addr:district'] || '鄰近山區',
-                price: estimatedPrice,
-                rating: estimatedRating,
-              };
-            })
-            .filter((item: LodgingPlace) => {
-              const driveMatch = maxDriveMinutes >= 999 || item.driveMinutes <= maxDriveMinutes;
-              const typeMatch = typeFilter === 'all' || item.typeCategory === typeFilter;
-              const priceMatch = matchesPrice(item.price, priceRange);
-              const ratingMatch = matchesRating(item.rating, minRating);
-              return driveMatch && typeMatch && priceMatch && ratingMatch;
-            });
-
-          filtered.push(...livePlaces);
-        }
-      }
-    } catch {
-      // 網路逾時維持本地計算
-    }
-  }
-
-  // 去重並依車程由近至遠排序
-  const uniqueMap = new Map<string, LodgingPlace>();
-  filtered.forEach((item) => {
-    const key = `${item.name.slice(0, 4)}_${item.latitude.toFixed(3)}`;
-    if (!uniqueMap.has(key)) {
-      uniqueMap.set(key, item);
-    }
-  });
-
-  return Array.from(uniqueMap.values()).sort((a, b) => a.driveMinutes - b.driveMinutes);
 }
