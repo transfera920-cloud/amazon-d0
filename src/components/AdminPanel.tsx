@@ -16,9 +16,16 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  Lock,
+  User,
+  LogOut,
 } from 'lucide-react';
 import { useSiteConfig } from '../context/SiteConfigContext';
 import { SiteTextConfig, DEFAULT_SITE_TEXT } from '../utils/siteConfig';
+
+const ADMIN_USERNAME = 'yy661003';
+const ADMIN_PASSWORD = 'yy661003';
+const AUTH_STORAGE_KEY = 'd0_admin_authenticated';
 
 export const AdminPanel: React.FC = () => {
   const {
@@ -33,6 +40,19 @@ export const AdminPanel: React.FC = () => {
     hasEnvKey,
   } = useSiteConfig();
 
+  // 登入驗證狀態（使用 sessionStorage 保存當前連線狀態）
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem(AUTH_STORAGE_KEY) === 'true';
+    }
+    return false;
+  });
+
+  const [usernameInput, setUsernameInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [showLoginPassword, setShowLoginPassword] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const [activeTab, setActiveTab] = useState<'text' | 'apiKey'>('text');
   const [formData, setFormData] = useState<SiteTextConfig>(siteText);
   const [keyInput, setKeyInput] = useState<string>(apiKey);
@@ -46,10 +66,35 @@ export const AdminPanel: React.FC = () => {
       setKeyInput(apiKey);
       setIsSavedSuccess(false);
       setKeySavedSuccess(false);
+      setLoginError(null);
     }
   }, [isAdminOpen, siteText, apiKey]);
 
   if (!isAdminOpen) return null;
+
+  // 登入處理
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (usernameInput.trim() === ADMIN_USERNAME && passwordInput === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      setLoginError(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      }
+    } else {
+      setLoginError('帳號或密碼錯誤，請重新輸入！');
+    }
+  };
+
+  // 登出處理
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setUsernameInput('');
+    setPasswordInput('');
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  };
 
   const handleFieldChange = (field: keyof SiteTextConfig, value: string) => {
     setFormData((prev) => ({
@@ -131,6 +176,110 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div
+        id="admin-login-overlay"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/65 backdrop-blur-xs"
+        onClick={closeAdmin}
+      >
+        <div
+          id="admin-login-container"
+          className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-6 sm:p-7 text-stone-900 relative"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 關閉按鈕 */}
+          <button
+            type="button"
+            onClick={closeAdmin}
+            className="absolute right-4 top-4 p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+            aria-label="關閉"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {/* 登入標題 */}
+          <div className="flex flex-col items-center text-center mb-6">
+            <div className="p-3.5 rounded-2xl bg-emerald-700 text-white shadow-md mb-3">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h2 className="text-xl font-bold text-stone-900 tracking-tight">後台管理員登入</h2>
+            <p className="text-xs text-stone-500 mt-1">請輸入管理員帳號與密碼以進入系統後台</p>
+          </div>
+
+          {/* 錯誤提示 */}
+          {loginError && (
+            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          {/* 登入表單 */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label
+                htmlFor="admin-username"
+                className="block text-xs font-semibold text-stone-700 mb-1.5"
+              >
+                管理員帳號
+              </label>
+              <div className="relative">
+                <input
+                  id="admin-username"
+                  type="text"
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
+                  placeholder="請輸入帳號"
+                  className="w-full pl-9 pr-3.5 py-2.5 text-sm rounded-xl border border-stone-300 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 bg-white"
+                  autoFocus
+                  required
+                />
+                <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="admin-password"
+                className="block text-xs font-semibold text-stone-700 mb-1.5"
+              >
+                管理員密碼
+              </label>
+              <div className="relative">
+                <input
+                  id="admin-password"
+                  type={showLoginPassword ? 'text' : 'password'}
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="請輸入密碼"
+                  className="w-full pl-9 pr-10 py-2.5 text-sm rounded-xl border border-stone-300 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 bg-white"
+                  required
+                />
+                <Lock className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1"
+                >
+                  {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full mt-2 py-2.5 px-4 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white font-bold text-sm rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Lock className="w-4 h-4" />
+              <span>驗證並登入後台</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       id="admin-panel-overlay"
@@ -149,23 +298,41 @@ export const AdminPanel: React.FC = () => {
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-stone-900 leading-tight">
-                系統後台管理系統
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-stone-900 leading-tight">
+                  系統後台管理系統
+                </h2>
+                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                  <User className="w-3 h-3" />
+                  已登入：yy661003
+                </span>
+              </div>
               <p className="text-xs text-stone-500">
                 自由編輯前台所有文字標題與設定 Google Maps API 金鑰
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={closeAdmin}
-            className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors cursor-pointer"
-            aria-label="關閉後台"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-rose-700 hover:bg-rose-50 hover:border-rose-300 border border-transparent transition-colors flex items-center gap-1 cursor-pointer"
+              title="登出管理員"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>登出</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={closeAdmin}
+              className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors cursor-pointer"
+              aria-label="關閉後台"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* 分頁切換 */}
