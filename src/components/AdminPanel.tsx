@@ -19,9 +19,49 @@ import {
   Lock,
   User,
   LogOut,
+  Building2,
+  Plus,
+  Pencil,
+  MapPin,
+  Phone,
+  MessageSquare,
+  Info,
+  Search,
 } from 'lucide-react';
 import { useSiteConfig } from '../context/SiteConfigContext';
 import { SiteTextConfig, DEFAULT_SITE_TEXT } from '../utils/siteConfig';
+import { ManualLodgingEntry } from '../types';
+import {
+  getManualLodgings,
+  addManualLodging,
+  updateManualLodging,
+  deleteManualLodging,
+  resetManualLodgingsToDefault,
+  saveManualLodgings,
+} from '../utils/manualLodgings';
+
+const STANDARD_TRAILHEAD_CHOICES = [
+  '武陵農場',
+  '雪山登山口',
+  '勝光登山口',
+  '思源埡口',
+  '南湖大山登山口',
+  '屯原登山口',
+  '塔塔加登山口',
+  '玉山登山口',
+  '向陽登山口',
+  '嘉明湖登山口',
+  '合歡山登山口',
+  '小風口',
+  '松雪樓',
+  '東埔登山口',
+  '八通關登山口',
+  '戒茂斯登山口',
+  '觀霧',
+  '大鹿林道',
+  '鎮西堡登山口',
+  '司馬庫斯',
+];
 
 const ADMIN_USERNAME = 'yy661003';
 const ADMIN_PASSWORD = 'yy661003';
@@ -53,12 +93,28 @@ export const AdminPanel: React.FC = () => {
   const [showLoginPassword, setShowLoginPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'text' | 'apiKey'>('text');
+  const [activeTab, setActiveTab] = useState<'text' | 'manualLodgings' | 'apiKey'>('text');
   const [formData, setFormData] = useState<SiteTextConfig>(siteText);
   const [keyInput, setKeyInput] = useState<string>(apiKey);
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [isSavedSuccess, setIsSavedSuccess] = useState<boolean>(false);
   const [keySavedSuccess, setKeySavedSuccess] = useState<boolean>(false);
+
+  // 在地口碑住宿管理狀態
+  const [manualLodgings, setManualLodgings] = useState<ManualLodgingEntry[]>([]);
+  const [manualFilterText, setManualFilterText] = useState<string>('');
+  const [isManualFormOpen, setIsManualFormOpen] = useState<boolean>(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [formName, setFormName] = useState<string>('');
+  const [formTrailhead, setFormTrailhead] = useState<string>('武陵農場');
+  const [formIsCustomTrailhead, setFormIsCustomTrailhead] = useState<boolean>(false);
+  const [formCustomTrailhead, setFormCustomTrailhead] = useState<string>('');
+  const [formContact, setFormContact] = useState<string>('');
+  const [formNotes, setFormNotes] = useState<string>('');
+  const [formLatitude, setFormLatitude] = useState<string>('');
+  const [formLongitude, setFormLongitude] = useState<string>('');
+  const [formDriveDescription, setFormDriveDescription] = useState<string>('');
+  const [manualSuccessMsg, setManualSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAdminOpen) {
@@ -67,6 +123,7 @@ export const AdminPanel: React.FC = () => {
       setIsSavedSuccess(false);
       setKeySavedSuccess(false);
       setLoginError(null);
+      setManualLodgings(getManualLodgings());
     }
   }, [isAdminOpen, siteText, apiKey]);
 
@@ -169,6 +226,146 @@ export const AdminPanel: React.FC = () => {
           setTimeout(() => {
             setIsSavedSuccess(false);
           }, 2000);
+        } catch {
+          alert('匯入的 JSON 格式不正確');
+        }
+      };
+    }
+  };
+
+  // 開啟新增在地口碑住宿表單
+  const handleOpenAddManual = () => {
+    setEditingEntryId(null);
+    setFormName('');
+    setFormTrailhead('武陵農場');
+    setFormIsCustomTrailhead(false);
+    setFormCustomTrailhead('');
+    setFormContact('');
+    setFormNotes('');
+    setFormLatitude('');
+    setFormLongitude('');
+    setFormDriveDescription('');
+    setIsManualFormOpen(true);
+  };
+
+  // 開啟編輯在地口碑住宿表單
+  const handleOpenEditManual = (entry: ManualLodgingEntry) => {
+    setEditingEntryId(entry.id);
+    setFormName(entry.name || '');
+    if (STANDARD_TRAILHEAD_CHOICES.includes(entry.trailheadName)) {
+      setFormIsCustomTrailhead(false);
+      setFormTrailhead(entry.trailheadName);
+      setFormCustomTrailhead('');
+    } else {
+      setFormIsCustomTrailhead(true);
+      setFormTrailhead('自訂');
+      setFormCustomTrailhead(entry.trailheadName);
+    }
+    setFormContact(entry.contact || '');
+    setFormNotes(entry.notes || '');
+    setFormLatitude(entry.latitude !== undefined ? String(entry.latitude) : '');
+    setFormLongitude(entry.longitude !== undefined ? String(entry.longitude) : '');
+    setFormDriveDescription(entry.driveDescription || '');
+    setIsManualFormOpen(true);
+  };
+
+  // 儲存口碑住宿項目
+  const handleSaveManualEntry = (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalTrailhead = formIsCustomTrailhead ? formCustomTrailhead.trim() : formTrailhead.trim();
+    if (!formName.trim()) {
+      alert('請填寫住宿名稱！');
+      return;
+    }
+    if (!finalTrailhead) {
+      alert('請選擇或填寫所屬登山口！');
+      return;
+    }
+
+    const latVal = formLatitude.trim() ? parseFloat(formLatitude.trim()) : undefined;
+    const lngVal = formLongitude.trim() ? parseFloat(formLongitude.trim()) : undefined;
+    const validLat = typeof latVal === 'number' && Number.isFinite(latVal) ? latVal : undefined;
+    const validLng = typeof lngVal === 'number' && Number.isFinite(lngVal) ? lngVal : undefined;
+
+    if (editingEntryId) {
+      updateManualLodging(editingEntryId, {
+        name: formName.trim(),
+        trailheadName: finalTrailhead,
+        contact: formContact.trim(),
+        notes: formNotes.trim() || undefined,
+        latitude: validLat,
+        longitude: validLng,
+        driveDescription: formDriveDescription.trim() || undefined,
+      });
+      setManualSuccessMsg('已成功更新口碑住宿項目！');
+    } else {
+      addManualLodging({
+        name: formName.trim(),
+        trailheadName: finalTrailhead,
+        contact: formContact.trim(),
+        notes: formNotes.trim() || undefined,
+        latitude: validLat,
+        longitude: validLng,
+        driveDescription: formDriveDescription.trim() || undefined,
+      });
+      setManualSuccessMsg('已成功新增口碑住宿項目！');
+    }
+
+    setManualLodgings(getManualLodgings());
+    setIsManualFormOpen(false);
+    setTimeout(() => {
+      setManualSuccessMsg(null);
+    }, 3000);
+  };
+
+  // 刪除口碑住宿項目
+  const handleDeleteManualEntry = (id: string, name: string) => {
+    if (window.confirm(`確定要刪除「${name}」這筆在地口碑住宿嗎？`)) {
+      deleteManualLodging(id);
+      setManualLodgings(getManualLodgings());
+      setManualSuccessMsg('已刪除口碑住宿項目');
+      setTimeout(() => setManualSuccessMsg(null), 2500);
+    }
+  };
+
+  // 恢復預設口碑住宿示範資料
+  const handleResetManualDefaults = () => {
+    if (window.confirm('確定要將在地口碑住宿清單恢復為系統預設示範資料嗎？（含武陵客棧與勝光方便屋）')) {
+      resetManualLodgingsToDefault();
+      setManualLodgings(getManualLodgings());
+      setManualSuccessMsg('已重設為預設口碑住宿清單！');
+      setTimeout(() => setManualSuccessMsg(null), 2500);
+    }
+  };
+
+  // 匯出口碑住宿 JSON
+  const handleExportManualJson = () => {
+    const dataStr =
+      'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manualLodgings, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', 'd0_manual_lodgings.json');
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  // 匯入口碑住宿 JSON
+  const handleImportManualJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], 'UTF-8');
+      fileReader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target?.result as string);
+          if (Array.isArray(parsed)) {
+            saveManualLodgings(parsed);
+            setManualLodgings(parsed);
+            setManualSuccessMsg('已成功匯入口碑住宿資料！');
+            setTimeout(() => setManualSuccessMsg(null), 2500);
+          } else {
+            alert('匯入的檔案非陣列格式');
+          }
         } catch {
           alert('匯入的 JSON 格式不正確');
         }
@@ -336,11 +533,11 @@ export const AdminPanel: React.FC = () => {
         </div>
 
         {/* 分頁切換 */}
-        <div className="flex border-b border-stone-200 bg-white px-5 pt-2 gap-2 shrink-0">
+        <div className="flex border-b border-stone-200 bg-white px-5 pt-2 gap-2 shrink-0 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('text')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors shrink-0 cursor-pointer ${
               activeTab === 'text'
                 ? 'border-emerald-600 text-emerald-800'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
@@ -352,8 +549,30 @@ export const AdminPanel: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => setActiveTab('manualLodgings')}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors shrink-0 cursor-pointer ${
+              activeTab === 'manualLodgings'
+                ? 'border-emerald-600 text-emerald-800'
+                : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>在地口碑住宿管理</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${
+                activeTab === 'manualLodgings'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-stone-100 text-stone-600'
+              }`}
+            >
+              {manualLodgings.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('apiKey')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors shrink-0 cursor-pointer ${
               activeTab === 'apiKey'
                 ? 'border-emerald-600 text-emerald-800'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
@@ -657,7 +876,376 @@ export const AdminPanel: React.FC = () => {
             </form>
           )}
 
-          {/* TAB 2: API 金鑰與連線設定 */}
+          {/* TAB 2: 在地口碑住宿管理 */}
+          {activeTab === 'manualLodgings' && (
+            <div className="space-y-5">
+              {/* 說明與操作列 */}
+              <div className="p-4 rounded-xl border border-stone-200 bg-stone-50/70 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-stone-900 text-sm sm:text-base">
+                        在地口碑住宿資料庫
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
+                        非 Google 即時收錄
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-1">
+                      手動收錄只能透過 Facebook 私訊、電話聯繫的山區接駁站、部落通鋪與方便屋
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenAddManual}
+                    className="shrink-0 px-4 py-2 text-xs sm:text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>新增口碑住宿</span>
+                  </button>
+                </div>
+
+                {/* 搜尋過濾與工具列 */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-2 border-t border-stone-200">
+                  <div className="relative flex-1 max-w-xs">
+                    <input
+                      type="text"
+                      value={manualFilterText}
+                      onChange={(e) => setManualFilterText(e.target.value)}
+                      placeholder="搜尋名稱、登山口或備註..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+                    />
+                    <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleResetManualDefaults}
+                      className="px-2.5 py-1.5 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      title="重設為預設示範資料（武陵客棧、勝光方便屋）"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>預設示範</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleExportManualJson}
+                      className="px-2.5 py-1.5 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      title="匯出為 JSON 備份"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>匯出</span>
+                    </button>
+
+                    <label className="px-2.5 py-1.5 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer">
+                      <Upload className="w-3 h-3" />
+                      <span>匯入</span>
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportManualJson}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* 成功提示訊息 */}
+              {manualSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>{manualSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* 新增 / 編輯 表單 Modal / 展開區塊 */}
+              {isManualFormOpen && (
+                <form
+                  onSubmit={handleSaveManualEntry}
+                  className="p-4 sm:p-5 rounded-xl border-2 border-emerald-600/40 bg-emerald-50/20 space-y-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between border-b border-emerald-200 pb-2.5">
+                    <div className="flex items-center gap-2 font-bold text-stone-900 text-sm">
+                      <Building2 className="w-4 h-4 text-emerald-700" />
+                      <span>{editingEntryId ? '編輯在地口碑住宿' : '新增在地口碑住宿項目'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsManualFormOpen(false)}
+                      className="text-stone-400 hover:text-stone-600 p-1"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* 住宿名稱 */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">
+                        住宿名稱 <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formName}
+                        onChange={(e) => setFormName(e.target.value)}
+                        placeholder="例如：武陵客棧-登山旅遊協助站"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600 font-medium"
+                        required
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* 所屬登山口 */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">
+                        所屬登山口 <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={formIsCustomTrailhead ? '__custom__' : formTrailhead}
+                          onChange={(e) => {
+                            if (e.target.value === '__custom__') {
+                              setFormIsCustomTrailhead(true);
+                            } else {
+                              setFormIsCustomTrailhead(false);
+                              setFormTrailhead(e.target.value);
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+                        >
+                          <optgroup label="常見登山口清單">
+                            {STANDARD_TRAILHEAD_CHOICES.map((th) => (
+                              <option key={th} value={th}>
+                                ⛰️ {th}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <option value="__custom__">✏️ 自行輸入其他登山口名稱...</option>
+                        </select>
+
+                        {formIsCustomTrailhead && (
+                          <input
+                            type="text"
+                            value={formCustomTrailhead}
+                            onChange={(e) => setFormCustomTrailhead(e.target.value)}
+                            placeholder="請輸入登山口名稱（例如：合歡西北峰登山口）"
+                            className="w-full px-3 py-2 text-sm rounded-lg border border-emerald-400 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+                            required
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 聯絡方式 */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">
+                        聯絡方式（可填寫 Facebook 專頁連結、電話、Line ID 等）
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formContact}
+                        onChange={(e) => setFormContact(e.target.value)}
+                        placeholder="例如：Facebook 專頁私訊：https://www.facebook.com/wulinginn / 電話：0912-345678"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+                        required
+                      />
+                    </div>
+
+                    {/* 備註說明 */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">
+                        備註說明（例如：僅接受私訊預約、無法線上查詢空房、通鋪衛浴設備等）
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formNotes}
+                        onChange={(e) => setFormNotes(e.target.value)}
+                        placeholder="例如：僅接受 Facebook 私訊預約、無法線上查詢即時空房。提供行前通鋪與登山口接駁。"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+                      />
+                    </div>
+
+                    {/* 大概車程 / 距離描述 */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">
+                        大概車程／距離描述（自由文字，無座標時用以參考）
+                      </label>
+                      <input
+                        type="text"
+                        value={formDriveDescription}
+                        onChange={(e) => setFormDriveDescription(e.target.value)}
+                        placeholder="例如：距武陵農場登山口約 12-15 分鐘車程（位於台7甲線約53K處）"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+                      />
+                    </div>
+
+                    {/* 大概座標（選填） */}
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">
+                        大概緯度（Latitude，選填）
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={formLatitude}
+                        onChange={(e) => setFormLatitude(e.target.value)}
+                        placeholder="例如：24.3468"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">
+                        大概經度（Longitude，選填）
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={formLongitude}
+                        onChange={(e) => setFormLongitude(e.target.value)}
+                        placeholder="例如：121.3135"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-600 font-mono"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2 text-[11px] text-stone-500 bg-stone-100 p-2.5 rounded-lg flex items-start gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-stone-500 shrink-0 mt-0.5" />
+                      <span>
+                        座標為選填欄位。有填寫座標的項目，將在前台地圖上以專屬紫色圖釘標示；若未填寫座標，僅於搜尋結果頁以文字卡片列出，不影響正常瀏覽。
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-emerald-200">
+                    <button
+                      type="button"
+                      onClick={() => setIsManualFormOpen(false)}
+                      className="px-3.5 py-2 text-xs font-semibold text-stone-600 hover:text-stone-800 bg-white border border-stone-200 rounded-xl transition-colors cursor-pointer"
+                    >
+                      取消
+                    </button>
+
+                    <button
+                      type="submit"
+                      className="px-5 py-2 text-xs sm:text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{editingEntryId ? '儲存變更' : '確定新增'}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* 現存口碑住宿清單 */}
+              <div className="space-y-3">
+                {manualLodgings
+                  .filter((item) => {
+                    if (!manualFilterText.trim()) return true;
+                    const q = manualFilterText.toLowerCase();
+                    return (
+                      item.name.toLowerCase().includes(q) ||
+                      item.trailheadName.toLowerCase().includes(q) ||
+                      item.contact.toLowerCase().includes(q) ||
+                      (item.notes && item.notes.toLowerCase().includes(q)) ||
+                      (item.driveDescription && item.driveDescription.toLowerCase().includes(q))
+                    );
+                  })
+                  .map((item) => {
+                    const hasCoords =
+                      typeof item.latitude === 'number' &&
+                      Number.isFinite(item.latitude) &&
+                      typeof item.longitude === 'number' &&
+                      Number.isFinite(item.longitude);
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-4 rounded-xl border border-stone-200 bg-white hover:border-stone-300 transition-colors space-y-2.5 shadow-2xs"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-stone-900 text-sm sm:text-base">
+                              {item.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              ⛰️ {item.trailheadName}
+                            </span>
+                            {hasCoords ? (
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-purple-600" />
+                                <span>
+                                  {item.latitude?.toFixed(4)}, {item.longitude?.toFixed(4)}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-stone-100 text-stone-600">
+                                📝 純文字列表
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditManual(item)}
+                              className="px-2.5 py-1 text-xs font-semibold text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3 text-stone-600" />
+                              <span>編輯</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteManualEntry(item.id, item.name)}
+                              className="px-2.5 py-1 text-xs font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
+                              <span>刪除</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 聯絡資訊 */}
+                        <div className="text-xs text-stone-700 flex items-start gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-stone-400 shrink-0 mt-0.5" />
+                          <span className="font-semibold text-stone-800 shrink-0">聯絡方式：</span>
+                          <span className="break-all">{item.contact}</span>
+                        </div>
+
+                        {/* 大概車程 */}
+                        {item.driveDescription && (
+                          <div className="text-xs text-amber-800 flex items-start gap-1.5">
+                            <span className="shrink-0">🚗</span>
+                            <span className="font-semibold text-stone-800 shrink-0">車程／位置：</span>
+                            <span>{item.driveDescription}</span>
+                          </div>
+                        )}
+
+                        {/* 備註說明 */}
+                        {item.notes && (
+                          <div className="text-xs text-stone-600 bg-stone-50 p-2.5 rounded-lg border border-stone-200/60 leading-relaxed">
+                            <span className="font-semibold text-stone-700">備註：</span>
+                            {item.notes}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {manualLodgings.length === 0 && (
+                  <div className="p-8 text-center bg-stone-50 rounded-xl border border-stone-200 text-stone-500 text-xs">
+                    目前尚未建立任何在地口碑住宿項目。點選上方「新增口碑住宿」或「預設示範」快速載入。
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: API 金鑰與連線設定 */}
           {activeTab === 'apiKey' && (
             <div className="space-y-6">
               {/* 金鑰狀態卡片 */}

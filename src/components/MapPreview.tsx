@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { LodgingPlace, SearchDataSource } from '../types';
+import { LodgingPlace, SearchDataSource, ManualLodgingEntry } from '../types';
 
 interface MapPreviewProps {
   trailheadName: string;
@@ -9,6 +9,7 @@ interface MapPreviewProps {
   longitude: number;
   driveTime: string;
   lodgings: LodgingPlace[];
+  manualLodgings?: ManualLodgingEntry[];
   isLoadingLodgings?: boolean;
   dataSource?: SearchDataSource;
   selectedLodgingId?: string | null;
@@ -21,6 +22,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
   longitude,
   driveTime,
   lodgings,
+  manualLodgings = [],
   isLoadingLodgings = false,
   dataSource = 'google',
   selectedLodgingId,
@@ -30,6 +32,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const trailheadMarkerRef = useRef<L.Marker | null>(null);
   const lodgingMarkersLayerRef = useRef<L.LayerGroup | null>(null);
+  const manualMarkersLayerRef = useRef<L.LayerGroup | null>(null);
   const markersByIdRef = useRef<Map<string, L.Marker>>(new Map());
   const circleRef = useRef<L.Circle | null>(null);
 
@@ -121,6 +124,10 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
       // 住宿點圖層群組
       const lodgingLayer = L.layerGroup().addTo(map);
       lodgingMarkersLayerRef.current = lodgingLayer;
+
+      // 在地口碑住宿圖層群組（紫色特殊圖釘）
+      const manualLayer = L.layerGroup().addTo(map);
+      manualMarkersLayerRef.current = manualLayer;
 
       mapInstanceRef.current = map;
 
@@ -260,6 +267,91 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
       lodgingLayer.addLayer(marker);
     });
 
+    // 繪製在地口碑住宿標記（紫色高對比圖釘）
+    const manualLayer = manualMarkersLayerRef.current;
+    if (manualLayer) {
+      manualLayer.clearLayers();
+
+      manualLodgings.forEach((manual) => {
+        if (
+          typeof manual.latitude === 'number' &&
+          Number.isFinite(manual.latitude) &&
+          typeof manual.longitude === 'number' &&
+          Number.isFinite(manual.longitude)
+        ) {
+          boundsPoints.push([manual.latitude, manual.longitude]);
+
+          const manualIcon = L.divIcon({
+            className: 'manual-lodging-marker-pin',
+            html: `
+              <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 34px;
+                height: 34px;
+                background-color: #7c3aed;
+                color: white;
+                border-radius: 50%;
+                border: 2.5px solid #ffffff;
+                box-shadow: 0 3px 10px rgba(124, 58, 237, 0.45);
+                font-size: 17px;
+                cursor: pointer;
+              ">
+                📌
+              </div>
+            `,
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+            popupAnchor: [0, -17],
+          });
+
+          const marker = L.marker([manual.latitude, manual.longitude], {
+            icon: manualIcon,
+            zIndexOffset: 500,
+          });
+
+          marker.bindPopup(`
+            <div style="padding: 6px 4px; min-width: 220px; max-width: 270px; font-family: sans-serif;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px;">
+                <span style="font-size: 10px; background-color: #f3e8ff; color: #6b21a8; padding: 2px 6px; border-radius: 4px; font-weight: 700;">
+                  在地口碑住宿
+                </span>
+                <span style="font-size: 10px; background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+                  非 Google 即時收錄
+                </span>
+              </div>
+              <div style="font-size: 14px; font-weight: bold; color: #1c1917; margin-bottom: 4px; line-height: 1.3;">
+                ${manual.name}
+              </div>
+              ${
+                manual.driveDescription
+                  ? `<div style="font-size: 11px; color: #b45309; font-weight: 600; margin-bottom: 4px;">
+                      🚗 ${manual.driveDescription}
+                    </div>`
+                  : ''
+              }
+              <div style="font-size: 11px; color: #44403c; margin-bottom: 4px; background: #fafaf9; padding: 4px 6px; border-radius: 4px; border: 1px solid #e7e5e4;">
+                <span style="font-weight: 600;">📞 聯絡：</span>${manual.contact}
+              </div>
+              ${
+                manual.notes
+                  ? `<div style="font-size: 11px; color: #78716c; margin-bottom: 6px; line-height: 1.3;">
+                      ${manual.notes}
+                    </div>`
+                  : ''
+              }
+              <div style="font-size: 10px; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; padding: 4px 6px; border-radius: 4px; line-height: 1.3; font-weight: 500;">
+                ⚠️ 非 Google 地圖收錄資料，請自行聯繫確認空房與實際狀況
+              </div>
+            </div>
+          `);
+
+          manualLayer.addLayer(marker);
+        }
+      });
+    }
+
     if (boundsPoints.length > 1) {
       map.fitBounds(boundsPoints, {
         padding: [40, 40],
@@ -268,7 +360,7 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
     } else {
       map.setView([latitude, longitude], 11);
     }
-  }, [lodgings, latitude, longitude, onSelectLodging]);
+  }, [lodgings, manualLodgings, latitude, longitude, onSelectLodging]);
 
   // 當外部指定 selectedLodgingId 時，地圖平移並打開該標記彈窗
   useEffect(() => {
@@ -309,7 +401,14 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
         {isLoadingLodgings ? (
           <span>正在搜尋符合條件之住宿...</span>
         ) : (
-          <span>符合條件：{lodgings.length} 處住宿點</span>
+          <span>
+            符合條件：{lodgings.length} 處住宿點
+            {manualLodgings.filter((m) => Number.isFinite(m.latitude) && Number.isFinite(m.longitude)).length > 0 && (
+              <span className="text-purple-700 ml-1">
+                (+{manualLodgings.filter((m) => Number.isFinite(m.latitude) && Number.isFinite(m.longitude)).length} 口碑)
+              </span>
+            )}
+          </span>
         )}
       </div>
 
@@ -317,8 +416,8 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
       {!isLoadingLodgings && lodgings.length === 0 && (
         <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/20 pointer-events-none">
           <div className="bg-white/95 backdrop-blur-xs p-4 rounded-xl border border-stone-200 shadow-md text-center max-w-sm">
-            <p className="text-sm font-bold text-stone-800">目前條件下暫無完全符合之住宿</p>
-            <p className="text-xs text-stone-500 mt-1">建議放寬「車程時間」或「住宿類型」條件後重試</p>
+            <p className="text-sm font-bold text-stone-800">目前條件下暫無完全符合之 Google 住宿</p>
+            <p className="text-xs text-stone-500 mt-1">建議放寬「車程時間」或「住宿類型」條件，或參考下方在地口碑住宿</p>
           </div>
         </div>
       )}
@@ -328,11 +427,12 @@ export const MapPreview: React.FC<MapPreviewProps> = ({
         <div className="flex items-center gap-1.5 font-semibold text-stone-900">
           <span>⛰️ 登山口：{trailheadName}</span>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-stone-500 pt-0.5 border-t border-stone-100">
+        <div className="flex items-center gap-2 text-[11px] text-stone-500 pt-0.5 border-t border-stone-100 flex-wrap">
           <span className="flex items-center gap-1">🏡 民宿</span>
           <span className="flex items-center gap-1">🏨 飯店旅館</span>
           <span className="flex items-center gap-1">🛏️ 背包客棧</span>
           <span className="flex items-center gap-1">⛺ 露營山莊</span>
+          <span className="flex items-center gap-1 text-purple-700 font-semibold">📌 口碑住宿 (非 Google)</span>
         </div>
       </div>
     </div>

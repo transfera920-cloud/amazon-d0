@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle, Key, Loader2 } from 'lucide-react';
-import { SearchCriteria, TrailheadLocation } from '../types';
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  Key,
+  Loader2,
+  Phone,
+  ExternalLink,
+  MapPin,
+  Car,
+} from 'lucide-react';
+import { SearchCriteria, TrailheadLocation, ManualLodgingEntry } from '../types';
 import { getTrailheadLocation } from '../data/trailheads';
 import { getNearbyAccommodations, AccommodationsSearchResult } from '../data/lodgings';
+import {
+  getManualLodgingsForTrailhead,
+  MANUAL_LODGINGS_UPDATED_EVENT,
+} from '../utils/manualLodgings';
 import { MapPreview } from './MapPreview';
 import { LodgingCardsList } from './LodgingCardsList';
 import { useSiteConfig } from '../context/SiteConfigContext';
@@ -22,6 +36,46 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedLodgingId, setSelectedLodgingId] = useState<string | null>(null);
   const [keyUpdateTick, setKeyUpdateTick] = useState<number>(0);
+  const [manualLodgings, setManualLodgings] = useState<ManualLodgingEntry[]>([]);
+
+  // 監聽在地口碑住宿更新與當前登山口變更
+  useEffect(() => {
+    const targetTh = location?.name || criteria.trailhead.trim();
+    setManualLodgings(getManualLodgingsForTrailhead(targetTh));
+
+    const handleManualUpdate = () => {
+      const activeTh = location?.name || criteria.trailhead.trim();
+      setManualLodgings(getManualLodgingsForTrailhead(activeTh));
+    };
+
+    window.addEventListener(MANUAL_LODGINGS_UPDATED_EVENT, handleManualUpdate);
+    return () => {
+      window.removeEventListener(MANUAL_LODGINGS_UPDATED_EVENT, handleManualUpdate);
+    };
+  }, [location, criteria.trailhead]);
+
+  // 輔助函式：將文字中的網址轉為可直接點擊之超連結
+  const renderClickableContact = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-purple-700 hover:text-purple-900 underline font-semibold inline-flex items-center gap-0.5 break-all"
+          >
+            {part}
+            <ExternalLink className="w-3 h-3 inline shrink-0" />
+          </a>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
 
   // 監聽金鑰變更，即時重新查詢
   useEffect(() => {
@@ -66,7 +120,8 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
             maxMinutes,
             criteria.lodgingType,
             criteria.priceRange,
-            criteria.minRating
+            criteria.minRating,
+            loc.name
           );
           if (isMounted) {
             setSearchResult(result);
@@ -232,6 +287,7 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
           longitude={location.longitude}
           driveTime={criteria.driveTime}
           lodgings={searchResult?.lodgings || []}
+          manualLodgings={manualLodgings}
           isLoadingLodgings={isLoading}
           dataSource={searchResult?.dataSource || 'google'}
           selectedLodgingId={selectedLodgingId}
@@ -247,6 +303,122 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
           onSelectLodging={setSelectedLodgingId}
           trailheadName={location.name}
         />
+      )}
+
+      {/* 在地口碑住宿（非 Google 即時收錄）獨立區塊 */}
+      {manualLodgings.length > 0 && (
+        <div id="manual-lodgings-section" className="mt-7 pt-6 border-t-2 border-stone-100">
+          {/* 區塊標題列 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="p-1 rounded-lg bg-purple-100 text-purple-700 text-sm">
+                📌
+              </span>
+              <h3 className="text-base font-bold text-stone-900">
+                在地口碑住宿（非 Google 即時收錄）
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                {manualLodgings.length} 處山友私房／接駁站
+              </span>
+            </div>
+
+            <div className="text-xs text-stone-500 flex items-center gap-1.5 font-medium">
+              <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+              <span>對應登山口：{location?.name || currentTrailheadName}</span>
+            </div>
+          </div>
+
+          {/* 醒目警示提醒橫幅 */}
+          <div className="mb-4 px-3.5 py-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong className="font-bold text-amber-950">山友預約叮嚀：</strong>
+              以下資料為後台人工建立之在地接駁站、部落私房通鋪或 FB 私訊借宿點。
+              <strong className="text-rose-700 font-bold ml-1">
+                「非 Google 地圖收錄資料，請自行聯繫確認空房與實際狀況」
+              </strong>
+              ，亦無法保證現場營業與安全條件。
+            </div>
+          </div>
+
+          {/* 口碑住宿卡片清單 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {manualLodgings.map((entry) => {
+              const hasCoords =
+                typeof entry.latitude === 'number' &&
+                Number.isFinite(entry.latitude) &&
+                typeof entry.longitude === 'number' &&
+                Number.isFinite(entry.longitude);
+
+              return (
+                <div
+                  key={entry.id}
+                  className="bg-white rounded-xl border border-stone-200 hover:border-purple-300 p-4 transition-all shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden"
+                >
+                  {/* 左側高對比紫色色條 */}
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-600" />
+
+                  <div className="space-y-2.5 pl-1.5">
+                    {/* 卡片標題與標籤 */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="font-bold text-stone-900 text-sm sm:text-base leading-snug">
+                          {entry.name}
+                        </h4>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            ⛰️ {entry.trailheadName}
+                          </span>
+                          {hasCoords ? (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-purple-600" />
+                              <span>已標示於上方地圖</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-stone-100 text-stone-600">
+                              📝 無座標（文字收錄）
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 大概車程／位置描述 */}
+                    {entry.driveDescription && (
+                      <div className="text-xs text-amber-900 bg-amber-50/70 px-2.5 py-1.5 rounded-lg border border-amber-200/60 flex items-start gap-1.5 font-medium">
+                        <Car className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                        <span>{entry.driveDescription}</span>
+                      </div>
+                    )}
+
+                    {/* 聯絡方式 */}
+                    <div className="text-xs text-stone-800 flex items-start gap-1.5 pt-0.5">
+                      <Phone className="w-3.5 h-3.5 text-stone-500 shrink-0 mt-0.5" />
+                      <div className="leading-relaxed">
+                        <span className="font-semibold text-stone-900">聯絡方式：</span>{' '}
+                        {renderClickableContact(entry.contact)}
+                      </div>
+                    </div>
+
+                    {/* 備註說明 */}
+                    {entry.notes && (
+                      <div className="text-xs text-stone-600 bg-stone-50 p-2.5 rounded-lg border border-stone-100 leading-relaxed">
+                        <span className="font-semibold text-stone-700">說明備註：</span>
+                        {entry.notes}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 每筆項目的免責防呆標示 */}
+                  <div className="pl-1.5 pt-2 border-t border-stone-100 text-[11px] text-amber-800 font-medium flex items-center gap-1">
+                    <span className="shrink-0">⚠️</span>
+                    <span>非 Google 地圖收錄資料，請自行聯繫確認空房與實際狀況</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
     </section>
   );

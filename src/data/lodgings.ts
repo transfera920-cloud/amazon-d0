@@ -57,6 +57,11 @@ export const KNOWN_MOUNTAIN_LODGINGS: Omit<LodgingPlace, 'driveMinutes' | 'price
   { id: 'sy-2', name: '武陵富野渡假村', type: '飯店旅館', typeCategory: 'hotel', latitude: 24.3601, longitude: 121.3130, area: '武陵農場', price: 5200, rating: 4.5 },
   { id: 'sy-3', name: '武陵農場露營區', type: '露營區 / 登山山莊', typeCategory: 'camp', latitude: 24.3810, longitude: 121.3150, area: '武陵農場高山區', price: 1000, rating: 4.4 },
   { id: 'sy-4', name: '環山部落屋民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 24.3120, longitude: 121.2950, area: '環山部落', price: 1300, rating: 4.6 },
+  { id: 'sy-5', name: '武陵客棧-登山旅遊協助站', type: '登山客棧 / 方便屋', typeCategory: 'homestay', latitude: 24.3468, longitude: 121.3135, area: '台中市和平區中興路二段33號（台7甲線約53K處）', price: 600, rating: 4.6 },
+
+  // --- 勝光登山口 / 思源埡口周邊 ---
+  { id: 'sg-1', name: '南湖大山勝光登山口方便屋', type: '登山客棧 / 方便屋', typeCategory: 'homestay', latitude: 24.3667, longitude: 121.3418, area: '宜蘭縣大同鄉台7甲線50K（勝光登山口旁）', price: 500, rating: 4.5 },
+  { id: 'sg-2', name: '南湖大山勝光張姐方便屋', type: '登山客棧 / 方便屋', typeCategory: 'homestay', latitude: 24.3670, longitude: 121.3420, area: '宜蘭縣大同鄉台7甲線勝光派出所旁', price: 500, rating: 4.7 },
 
   // --- 向陽登山口 / 嘉明湖周邊 ---
   { id: 'xy-1', name: '利稻喜度民宿', type: '民宿 / B&B', typeCategory: 'homestay', latitude: 23.1895, longitude: 121.0320, area: '利稻部落', price: 1200, rating: 4.5 },
@@ -95,9 +100,39 @@ function getIncludedPlaceTypes(typeCategory: string): string[] {
 }
 
 /**
- * 將 Google Place Types 解析為內部分類
+ * 將 Google Place Types 與名稱關鍵字解析為內部分類
  */
-function parseTypeCategory(types: string[] = []): { category: 'homestay' | 'hostel' | 'hotel' | 'camp'; label: string } {
+function parseTypeCategory(
+  types: string[] = [],
+  name: string = ''
+): { category: 'homestay' | 'hostel' | 'hotel' | 'camp'; label: string } {
+  const n = name.toLowerCase();
+
+  // 優先比對山區名稱特徵（解決許多山區客棧/方便屋在 Google 被登記為一般商店或景點的問題）
+  if (n.includes('露營') || n.includes('營地')) {
+    return { category: 'camp', label: '露營區' };
+  }
+  if (n.includes('青年旅') || n.includes('背包') || n.includes('青旅')) {
+    return { category: 'hostel', label: '青年旅館 / 背包客棧' };
+  }
+  if (n.includes('飯店') || n.includes('酒店') || n.includes('渡假村') || n.includes('賓館') || n.includes('會館')) {
+    return { category: 'hotel', label: '飯店旅館' };
+  }
+  if (
+    n.includes('山莊') ||
+    n.includes('山屋') ||
+    n.includes('客棧') ||
+    n.includes('方便屋') ||
+    n.includes('協助站') ||
+    n.includes('接待家庭')
+  ) {
+    return { category: 'homestay', label: '登山客棧 / 方便屋' };
+  }
+  if (n.includes('民宿') || n.includes('農莊')) {
+    return { category: 'homestay', label: '民宿 / B&B' };
+  }
+
+  // 接著比對 Google 官方 Place Types
   if (types.includes('campground')) {
     return { category: 'camp', label: '露營 / 山莊' };
   }
@@ -224,6 +259,101 @@ export async function searchGoogleNearbyPlaces(
       errText = await response.text().catch(() => '');
     }
     throw { code: 'API_ERROR', message: `Google Places API 錯誤（HTTP ${response.status}）：${errText}` };
+  }
+
+  const data = await response.json();
+  return data.places || [];
+}
+
+/**
+ * 呼叫 Google Places API (New) Text Search
+ * 依關鍵字與 locationBias（以登山口為中心、依車程時間換算的半徑圓）進行搜尋，補強 searchNearby 的類型盲點
+ */
+export async function searchGoogleTextPlaces(
+  textQuery: string,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  apiKey: string
+): Promise<any[]> {
+  const directUrl = 'https://places.googleapis.com/v1/places:searchText';
+  const proxyUrl = '/proxy-google-places/v1/places:searchText';
+
+  const requestBody = {
+    textQuery,
+    languageCode: 'zh-TW',
+    locationBias: {
+      circle: {
+        center: {
+          latitude: lat,
+          longitude: lng,
+        },
+        // Places API (New) 的半徑上限為 50,000 公尺
+        radius: Math.min(50000.0, Math.max(1000.0, radiusMeters)),
+      },
+    },
+    pageSize: 20,
+  };
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Goog-Api-Key': apiKey,
+    'X-Goog-FieldMask':
+      'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.types,places.googleMapsUri',
+  };
+
+  const isDev =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  let response: Response;
+  try {
+    response = await fetch(directUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+  } catch (directErr) {
+    if (isDev) {
+      response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+    } else {
+      throw {
+        code: 'NETWORK_ERROR',
+        message: '無法連線至 Google Places API 伺服器，請檢查網路連線。',
+      };
+    }
+  }
+
+  if (response.status === 403) {
+    let googleDetail = '';
+    try {
+      const errJson = await response.json();
+      googleDetail = errJson?.error?.message || '';
+    } catch {}
+    const suffix = googleDetail ? `\nGoogle 回傳原因：${googleDetail}` : '';
+    throw {
+      code: 'AUTH_403',
+      message: `Google Places API 授權失敗（403）：請確認金鑰已啟用「Places API (New)」與參照網址設定。${suffix}`,
+    };
+  }
+
+  if (response.status === 429) {
+    throw { code: 'QUOTA_429', message: 'Google Places API 額度用盡或頻率過高（429）。' };
+  }
+
+  if (!response.ok) {
+    let errText = '';
+    try {
+      const errJson = await response.json();
+      errText = errJson?.error?.message || JSON.stringify(errJson);
+    } catch {
+      errText = await response.text().catch(() => '');
+    }
+    throw { code: 'API_ERROR', message: `Google Places Text Search 錯誤（HTTP ${response.status}）：${errText}` };
   }
 
   const data = await response.json();
@@ -411,7 +541,8 @@ export async function getNearbyAccommodations(
   maxDriveMinutes: number,
   typeFilter: string,
   priceRange: string = 'any',
-  minRating: string = 'any'
+  minRating: string = 'any',
+  trailheadName: string = '登山口'
 ): Promise<AccommodationsSearchResult> {
   const apiKey = getGoogleMapsApiKey();
 
@@ -440,11 +571,70 @@ export async function getNearbyAccommodations(
   else if (maxDriveMinutes <= 90) radiusMeters = 45000;
   else radiusMeters = 50000;
 
-  try {
-    // 步驟 1：呼叫 Google Places API (New) 搜尋即時旅宿
-    const rawPlaces = await searchGoogleNearbyPlaces(trailheadLat, trailheadLon, radiusMeters, typeFilter, apiKey);
+  // 建立 searchText 關鍵字清單（依官方 searchText 端點，以登山口為中心進行模糊補強）
+  const baseName = (trailheadName || '登山口').trim();
+  const searchKeywords = [
+    `${baseName} 民宿`,
+    `${baseName} 山莊`,
+    `${baseName} 客棧`,
+    `${baseName} 住宿`,
+    `${baseName} 登山`,
+  ];
 
-    if (rawPlaces.length === 0) {
+  // 若登山口名稱含「登山口」，額外追加去除後綴之關鍵字（例如「勝光」），補強商家登記慣用語
+  if (baseName.endsWith('登山口') && baseName.length > 3) {
+    const shortName = baseName.replace(/登山口$/, '');
+    searchKeywords.push(`${shortName} 民宿`, `${shortName} 客棧`, `${shortName} 住宿`, `${shortName} 方便屋`);
+  }
+
+  try {
+    // 步驟 1：並行執行 searchNearby 與 5 組 searchText 查詢
+    const textSearchPromises = searchKeywords.map((kw) =>
+      searchGoogleTextPlaces(kw, trailheadLat, trailheadLon, radiusMeters, apiKey)
+    );
+
+    const [nearbyRes, ...textResList] = await Promise.allSettled([
+      searchGoogleNearbyPlaces(trailheadLat, trailheadLon, radiusMeters, typeFilter, apiKey),
+      ...textSearchPromises,
+    ]);
+
+    // 檢查是否所有 Google 呼叫皆失敗（例如 403 授權錯誤或網路中斷）
+    const allRejected =
+      nearbyRes.status === 'rejected' &&
+      textResList.every((r) => r.status === 'rejected');
+
+    if (allRejected) {
+      // 拋出主要錯誤進入 catch 退回離線備援
+      throw (nearbyRes as PromiseRejectedResult).reason;
+    }
+
+    // 收集所有成功回傳的 Places
+    const allRawPlaces: any[] = [];
+    if (nearbyRes.status === 'fulfilled') {
+      allRawPlaces.push(...nearbyRes.value);
+    }
+    textResList.forEach((r) => {
+      if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+        allRawPlaces.push(...r.value);
+      }
+    });
+
+    // 依 place.id（或位置識別碼）去重合併
+    const seenPlaceIds = new Set<string>();
+    const uniqueRawPlaces: any[] = [];
+
+    for (const p of allRawPlaces) {
+      if (!p || !p.location) continue;
+      const placeId =
+        p.id ||
+        `${p.displayName?.text}_${p.location.latitude?.toFixed(4)}_${p.location.longitude?.toFixed(4)}`;
+      if (placeId && !seenPlaceIds.has(placeId)) {
+        seenPlaceIds.add(placeId);
+        uniqueRawPlaces.push(p);
+      }
+    }
+
+    if (uniqueRawPlaces.length === 0) {
       return {
         lodgings: [],
         dataSource: 'google',
@@ -453,8 +643,8 @@ export async function getNearbyAccommodations(
       };
     }
 
-    // 步驟 2：呼叫 Google Routes API computeRouteMatrix 取得真實駕車時間與距離
-    const destinations = rawPlaces.map((p) => ({
+    // 步驟 2：呼叫 Google Routes API computeRouteMatrix 一起計算真實駕車時間與距離（取前 45 筆）
+    const destinations = uniqueRawPlaces.slice(0, 45).map((p) => ({
       lat: p.location.latitude,
       lng: p.location.longitude,
     }));
@@ -462,8 +652,8 @@ export async function getNearbyAccommodations(
     const routeResults = await computeRealDriveRoutes(trailheadLat, trailheadLon, destinations, apiKey);
 
     // 步驟 3：組合真實資料
-    const googleLodgings: LodgingPlace[] = rawPlaces.map((p, idx) => {
-      const typeInfo = parseTypeCategory(p.types);
+    const googleLodgings: LodgingPlace[] = uniqueRawPlaces.slice(0, 45).map((p, idx) => {
+      const typeInfo = parseTypeCategory(p.types, p.displayName?.text);
       const priceInfo = formatPriceText(p.priceLevel);
       const route = routeResults[idx] || { driveMinutes: Infinity, distanceKm: 0 };
 
@@ -488,12 +678,16 @@ export async function getNearbyAccommodations(
 
     // 步驟 4：依使用者選擇的條件過濾
     const filtered = googleLodgings.filter((item) => {
-      // 只要 driveMinutes 不是有限數字（!Number.isFinite），不論使用者是否選擇「不限車程」，一律排除
+      // 只要 driveMinutes 不是有限數字（!Number.isFinite），一律排除
       if (!Number.isFinite(item.driveMinutes)) {
         return false;
       }
       // 車程條件過濾（如果限制了最大車程時間）
       if (Number.isFinite(maxDriveMinutes) && item.driveMinutes > maxDriveMinutes) {
+        return false;
+      }
+      // 住宿類型條件過濾（若使用者限定特定分類）
+      if (typeFilter !== 'all' && item.typeCategory !== typeFilter) {
         return false;
       }
       // 最低評分條件過濾

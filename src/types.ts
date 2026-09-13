@@ -50,3 +50,20 @@ export interface SearchResultData {
   errorType?: SearchErrorType;
   errorMessage?: string;
 }
+
+/**
+ * 在地口碑住宿（由後台手動收錄，針對 Google Places 未收錄或非標準商家）
+ */
+export interface ManualLodgingEntry {
+  id: string;
+  name: string;
+  trailheadName: string;
+  contact: string;
+  notes?: string;
+  latitude?: number;
+  longitude?: number;
+  driveDescription?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
