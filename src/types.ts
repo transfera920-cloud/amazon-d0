@@ -12,6 +12,8 @@ export interface TrailheadLocation {
   longitude: number;
   formattedAddress?: string;
   isFromGoogle?: boolean;
+  isOfflineFallback?: boolean;
+  sourceDescription?: string;
 }
 
 export interface LodgingPlace {

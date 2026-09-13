@@ -141,6 +141,41 @@ export const SearchResults: React.FC<SearchResultsProps> = ({ criteria, hasSearc
         </div>
       )}
 
+      {/* 登山口座標來源提示（若使用離線備援座標則明確標註警示） */}
+      {location && (
+        <div
+          className={`mb-3 px-3.5 py-2 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2 border ${
+            location.isFromGoogle
+              ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+              : 'bg-amber-50/80 border-amber-200 text-amber-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">⛰️ 登山口座標：</span>
+            <span>
+              {location.name}（{location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}）
+            </span>
+            {location.formattedAddress && (
+              <span className="text-[11px] opacity-75 hidden sm:inline">
+                • {location.formattedAddress}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 font-medium">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                location.isFromGoogle ? 'bg-emerald-500' : 'bg-amber-500'
+              }`}
+            />
+            <span>
+              {location.isFromGoogle
+                ? 'Google 即時查證座標'
+                : '離線備援座標（非即時查詢，可能略有偏差）'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 資料來源與異常狀態提示區塊 */}
       {!geocodingError && searchResult && (
         <>
