@@ -2,8 +2,8 @@ import { TrailheadLocation } from '../types';
 import { getGoogleMapsApiKey } from '../utils/apiKey';
 
 export const COMMON_TRAILHEAD_COORDINATES: Record<string, TrailheadLocation> = {
-  屯原登山口: { name: '屯原登山口', latitude: 24.0381, longitude: 121.2372 },
-  屯原: { name: '屯原登山口', latitude: 24.0381, longitude: 121.2372 },
+  屯原登山口: { name: '屯原登山口', latitude: 24.039419, longitude: 121.215375 },
+  屯原: { name: '屯原登山口', latitude: 24.039419, longitude: 121.215375 },
   塔塔加登山口: { name: '塔塔加登山口', latitude: 23.4842, longitude: 120.8931 },
   塔塔加: { name: '塔塔加登山口', latitude: 23.4842, longitude: 120.8931 },
   玉山登山口: { name: '玉山登山口', latitude: 23.4842, longitude: 120.8931 },
@@ -68,8 +68,8 @@ export async function getTrailheadLocation(query: string): Promise<TrailheadLoca
   if (!clean) {
     return {
       name: '屯原登山口',
-      latitude: 24.0381,
-      longitude: 121.2372,
+      latitude: 24.039419,
+      longitude: 121.215375,
       isFromGoogle: false,
       isOfflineFallback: true,
       sourceDescription: '離線備援座標，非即時查詢',
